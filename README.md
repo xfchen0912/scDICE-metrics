@@ -22,20 +22,24 @@ The implementations use [JAX](https://jax.readthedocs.io/en/latest/) when possib
 
 ## Key Features & Metrics
 
-### Disentanglement Metrics (Information-Theoretic)
-- **MIG (Mutual Information Gap)**: Measures the compactness of latent representations (from Chen et al. & scDisInFact)
-- **DCI (Disentanglement, Completeness, Informativeness)**: Evaluates the modularity and explicitness of the learned factors
-- **SAP Score**: Assesses separated attribute predictability
-- **JEMMIG**: Joint Entropy Minus Mutual Information Gap for robust modularity assessment
+### Disentanglement metrics
+- **MIG (Mutual Information Gap)**: Returns the overall score together with mean matched/complement MI summaries
+- **Mixed-KSG MIG**: Provides `max_mig`, `concat_mig`, and `min_mig` variants based on the Mixed-KSG mutual information estimator
+- **Classifier Attribute Gap**: Compares factor predictability from matched latent blocks against competitor and complement blocks
+- **Fairness Leakage**: Reports leakage accuracy together with demographic parity and equalized odds style statistics on complement latents
+
+### Integration benchmark metrics
+- **Bio conservation**: `isolated_labels`, `nmi_ari_cluster_labels_kmeans`, `nmi_ari_cluster_labels_leiden`, `silhouette_label`, `clisi_knn`
+- **Batch correction**: `bras`, `ilisi_knn`, `kbet_per_label`, `graph_connectivity`, `pcr_comparison`
 
 ### Counterfactual & Perturbation Metrics
-- **Interventional NLL**: Evaluates the likelihood of held-out perturbation data to assess out-of-distribution (OOD) generalization (from sVAE+)
-- **Reconstruction fidelity**: MSE and Pearson/Spearman correlations on specific gene sets (e.g., DEGs) between predicted counterfactuals and real held-out conditions
-- **Distance Metrics**: EMD (Earth Mover's Distance) and MMD (Maximum Mean Discrepancy) to compare generated vs. real cell distributions
+- **Interventional NLL** *(planned, not yet implemented)*: Evaluates the likelihood of held-out perturbation data to assess out-of-distribution (OOD) generalization (from sVAE+)
+- **Reconstruction fidelity** *(planned, not yet implemented)*: MSE and Pearson/Spearman correlations on specific gene sets (e.g., DEGs) between predicted counterfactuals and real held-out conditions
+- **Distance Metrics** *(planned, not yet implemented)*: EMD (Earth Mover's Distance) and MMD (Maximum Mean Discrepancy) to compare generated vs. real cell distributions
 
 ### Biological Interpretability
-- **Latent Traversal & Consistency**: Quantifies the preservation of biological manifolds (e.g., cell cycle, differentiation trajectories) when specific factors are manipulated
-- **Intrinsic vs. Extrinsic Separation**: Specifically designed for spatial omics to measure the decoupling of cell-intrinsic states from microenvironmental effects (inspired by MintFlow & SIMVI)
+- **Latent Traversal & Consistency** *(planned, not yet implemented)*: Quantifies the preservation of biological manifolds (e.g., cell cycle, differentiation trajectories) when specific factors are manipulated
+- **Intrinsic vs. Extrinsic Separation** *(planned, not yet implemented)*: Specifically designed for spatial omics to measure the decoupling of cell-intrinsic states from microenvironmental effects (inspired by MintFlow & SIMVI)
 
 ## Motivation
 
@@ -61,6 +65,48 @@ pip install git+https://github.com/xfchen0912/scDICE-metrics.git@main
 ```
 
 To leverage hardware acceleration (e.g., GPU) please install the apprpriate version of [JAX](https://github.com/google/jax#installation) separately. Often this can be easier by using conda-distributed versions of JAX.
+
+## Quick Start
+
+### Direct metric API
+
+```python
+import scdice_metrics as sm
+
+factors = adata.obs[["cell_type", "condition"]]
+
+mig_scores = sm.mig(adata.obsm["X_scDICE"], factors)
+ksg_scores = sm.mixed_ksg_mig(adata.obsm["X_scDICE"], factors)
+gap_scores = sm.classifier_attribute_gap(adata.obsm["X_scDICE"], factors)
+leakage_scores = sm.fairness_leakage(adata.obsm["X_scDICE"], factors, adata.obs["response"])
+```
+
+`fairness_leakage` expects a binary target or a numeric target that can be binarized by a median split.
+
+### Benchmarker API
+
+```python
+from scdice_metrics.benchmark import Benchmarker, Disentanglement
+
+bm = Benchmarker(
+    adata=adata,
+    batch_key="batch",
+    label_key="cell_type",
+    embedding_obsm_keys=["X_scDICE", "X_baseline"],
+    disentanglement_metrics=Disentanglement(
+        mig=True,
+        mixed_ksg_mig=True,
+        classifier_attribute_gap=True,
+        fairness_leakage=True,
+    ),
+    disentanglement_factor_keys=["cell_type", "condition"],
+    leakage_target_key="response",
+)
+bm.benchmark()
+results = bm.get_results()
+```
+
+`Benchmarker` now separates metric families into `Bio conservation`, `Batch correction`, and `Disentanglement`. If more than one family is enabled, aggregate scores are added automatically. For disentanglement runs, `disentanglement_factor_keys` are read from `adata.obs`, and `leakage_target_key` is only required when `fairness_leakage=True`.
 
 ## Release notes
 

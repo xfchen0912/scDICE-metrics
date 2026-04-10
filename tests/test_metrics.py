@@ -11,13 +11,14 @@ from scipy.spatial.distance import cdist as sp_cdist
 from scipy.spatial.distance import pdist, squareform
 from sklearn.cluster import KMeans as SKMeans
 from sklearn.datasets import make_blobs
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import silhouette_samples as sk_silhouette_samples
 from sklearn.metrics.pairwise import pairwise_distances_argmin
 from sklearn.neighbors import NearestNeighbors
 
 import scdice_metrics
 from scdice_metrics.nearest_neighbors import NeighborsResults
-from tests.utils.data import dummy_x_labels, dummy_x_labels_batch
+from tests.utils.data import dummy_disentanglement_data, dummy_x_labels, dummy_x_labels_batch
 
 scdice_metrics.settings.jax_fix_no_kernel_image()
 
@@ -193,3 +194,38 @@ def test_graph_connectivity():
     X, labels = dummy_x_labels(symmetric_positive=True, x_is_neighbors_results=True)
     metric = scdice_metrics.graph_connectivity(X, labels)
     assert isinstance(metric, float)
+
+
+def test_disentanglement_metrics():
+    latent_good, latent_bad, factors, response = dummy_disentanglement_data()
+    classifier = LogisticRegression(max_iter=200)
+
+    mig_scores = scdice_metrics.mig(latent_good, factors)
+    mig_scores_bad = scdice_metrics.mig(latent_bad, factors)
+    ksg_scores = scdice_metrics.mixed_ksg_mig(latent_good, factors, k=3)
+    ksg_scores_bad = scdice_metrics.mixed_ksg_mig(latent_bad, factors, k=3)
+    gap_scores = scdice_metrics.classifier_attribute_gap(latent_good, factors, cv_splits=3, classifier=classifier)
+    gap_scores_bad = scdice_metrics.classifier_attribute_gap(latent_bad, factors, cv_splits=3, classifier=classifier)
+    leakage_scores = scdice_metrics.fairness_leakage(
+        latent_good,
+        factors,
+        response,
+        cv_splits=3,
+        classifier=classifier,
+    )
+    assignments = scdice_metrics.assign_latent_blocks_by_mi(latent_good, factors)
+
+    assert mig_scores["score"] > 0
+    assert mig_scores["score"] > mig_scores_bad["score"]
+    assert ksg_scores["max_mig"] > ksg_scores_bad["max_mig"]
+    assert ksg_scores["concat_mig"] > ksg_scores_bad["concat_mig"]
+    assert gap_scores["concat_gap"] > 0
+    assert gap_scores["concat_gap"] > gap_scores_bad["concat_gap"]
+    assert 0 <= leakage_scores["accuracy"] <= 1
+    assert set(leakage_scores) == {
+        "accuracy",
+        "demographic_parity_difference",
+        "demographic_parity_ratio",
+        "equalized_odds_difference",
+    }
+    assert assignments["mi_matrix"].shape == (2, latent_good.shape[1])

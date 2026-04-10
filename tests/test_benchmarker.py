@@ -1,9 +1,10 @@
 import pandas as pd
 import pytest
+from sklearn.linear_model import LogisticRegression
 
-from scdice_metrics.benchmark import BatchCorrection, Benchmarker, BioConservation
+from scdice_metrics.benchmark import BatchCorrection, Benchmarker, BioConservation, Disentanglement
 from scdice_metrics.nearest_neighbors import jax_approx_min_k
-from tests.utils.data import dummy_benchmarker_adata
+from tests.utils.data import dummy_benchmarker_adata, dummy_disentanglement_benchmarker_adata
 
 
 def test_benchmarker():
@@ -92,3 +93,38 @@ def test_benchmarker_different_solvers(solver):
     results = bm.get_results()
     assert isinstance(results, pd.DataFrame)
     bm.plot_results_table()
+
+
+def test_benchmarker_disentanglement_metrics():
+    ad, emb_keys, batch_key, labels_key = dummy_disentanglement_benchmarker_adata()
+    classifier = LogisticRegression(max_iter=200)
+    bm = Benchmarker(
+        ad,
+        batch_key,
+        labels_key,
+        emb_keys,
+        bio_conservation_metrics=None,
+        batch_correction_metrics=None,
+        disentanglement_metrics=Disentanglement(
+            mig=True,
+            mixed_ksg_mig={"k": 3},
+            classifier_attribute_gap={"classifier": classifier, "cv_splits": 3},
+            fairness_leakage={"classifier": classifier, "cv_splits": 3},
+        ),
+        disentanglement_factor_keys=["factor_a", "factor_b"],
+        leakage_target_key="response",
+        progress_bar=False,
+    )
+    bm.benchmark()
+    results = bm.get_results(clean_names=False)
+    clean_results = bm.get_results()
+    assert isinstance(results, pd.DataFrame)
+    assert "mig_score" in results.columns
+    assert "mixed_ksg_mig_max_mig" in results.columns
+    assert "classifier_attribute_gap_concat_gap" in results.columns
+    assert "fairness_leakage_accuracy" in results.columns
+    assert "Disentanglement" in results.columns
+    assert "MIG" in clean_results.columns
+    assert "Leakage accuracy" in clean_results.columns
+    assert "Total" not in clean_results.columns
+    assert clean_results.loc["X_good", "Disentanglement"] > clean_results.loc["X_bad", "Disentanglement"]

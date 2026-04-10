@@ -7,7 +7,7 @@ cellular responses to unseen conditions (counterfactuals).
 """
 
 import logging
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 __version__ = "0.1.0"
 __author__ = "Xufeng Chen"
@@ -15,6 +15,10 @@ __email__ = "chenxufeng2022@sinh.ac.cn"
 
 from . import nearest_neighbors, utils
 from .metrics import (
+    assign_latent_blocks_by_mi,
+    classifier_attribute_gap,
+    encode_factors,
+    fairness_leakage,
     graph_connectivity,
     isolated_labels,
     kbet,
@@ -22,6 +26,9 @@ from .metrics import (
     clisi_knn,
     ilisi_knn,
     lisi_knn,
+    mig,
+    mixed_ksg_mi,
+    mixed_ksg_mig,
     nmi_ari_cluster_labels_kmeans,
     nmi_ari_cluster_labels_leiden,
     pcr_comparison,
@@ -47,10 +54,21 @@ __all__ = [
     "kbet",
     "kbet_per_label",
     "graph_connectivity",
+    "encode_factors",
+    "assign_latent_blocks_by_mi",
+    "mixed_ksg_mi",
+    "mig",
+    "mixed_ksg_mig",
+    "classifier_attribute_gap",
+    "fairness_leakage",
     "settings",
 ]
 
-__version__ = version("scdice-metrics")
+try:
+    __version__ = version("scdice-metrics")
+except PackageNotFoundError:
+    # Allow importing directly from a source checkout without installing the package.
+    pass
 
 settings.verbosity = logging.INFO
 # Jax sets the root logger, this prevents double output.

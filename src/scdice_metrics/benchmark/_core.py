@@ -28,6 +28,8 @@ MetricType = bool | Kwargs
 _LABELS = "labels"
 _BATCH = "batch"
 _X_PRE = "X_pre"
+_DISENTANGLEMENT_FACTORS = "disentanglement_factors"
+_LEAKAGE_TARGET = "leakage_target"
 _METRIC_TYPE = "Metric Type"
 _AGGREGATE_SCORE = "Aggregate score"
 
@@ -46,6 +48,21 @@ metric_name_cleaner = {
     "bras": "BRAS",
     "graph_connectivity": "Graph connectivity",
     "pcr_comparison": "PCR comparison",
+    "mig_score": "MIG",
+    "mig_mean_factor_mi": "Mean factor MI",
+    "mig_mean_complement_mi": "Mean complement MI",
+    "mixed_ksg_mig_max_mig": "Mixed-KSG maxMIG",
+    "mixed_ksg_mig_concat_mig": "Mixed-KSG concatMIG",
+    "mixed_ksg_mig_min_mig": "Mixed-KSG minMIG",
+    "classifier_attribute_gap_concat_gap": "Classifier concat gap",
+    "classifier_attribute_gap_max_gap": "Classifier max gap",
+    "classifier_attribute_gap_mean_accuracy": "Classifier mean accuracy",
+    "classifier_attribute_gap_mean_complement_accuracy": "Classifier complement accuracy",
+    "classifier_attribute_gap_mean_competitor_accuracy": "Classifier competitor accuracy",
+    "fairness_leakage_accuracy": "Leakage accuracy",
+    "fairness_leakage_demographic_parity_difference": "Demographic parity difference",
+    "fairness_leakage_demographic_parity_ratio": "Demographic parity ratio",
+    "fairness_leakage_equalized_odds_difference": "Equalized odds difference",
 }
 
 
@@ -81,6 +98,21 @@ class BatchCorrection:
     pcr_comparison: MetricType = True
 
 
+@dataclass(frozen=True)
+class Disentanglement:
+    """Specification of which disentanglement metrics to run in the pipeline.
+
+    Metrics can be included using a boolean flag. Custom keyword args can be
+    used by passing a dictionary here. Keyword args should not set data-related
+    parameters, such as `latent`, `factors`, or `target`.
+    """
+
+    mig: MetricType = True
+    mixed_ksg_mig: MetricType = True
+    classifier_attribute_gap: MetricType = True
+    fairness_leakage: MetricType = False
+
+
 class MetricAnnDataAPI(Enum):
     """Specification of the AnnData API for a metric."""
 
@@ -94,6 +126,10 @@ class MetricAnnDataAPI(Enum):
     pcr_comparison = lambda ad, fn: fn(ad.obsm[_X_PRE], ad.X, ad.obs[_BATCH], categorical=True)
     ilisi_knn = lambda ad, fn: fn(ad.uns["90_neighbor_res"], ad.obs[_BATCH])
     kbet_per_label = lambda ad, fn: fn(ad.uns["50_neighbor_res"], ad.obs[_BATCH], ad.obs[_LABELS])
+    mig = lambda ad, fn: fn(ad.X, ad.uns[_DISENTANGLEMENT_FACTORS])
+    mixed_ksg_mig = lambda ad, fn: fn(ad.X, ad.uns[_DISENTANGLEMENT_FACTORS])
+    classifier_attribute_gap = lambda ad, fn: fn(ad.X, ad.uns[_DISENTANGLEMENT_FACTORS])
+    fairness_leakage = lambda ad, fn: fn(ad.X, ad.uns[_DISENTANGLEMENT_FACTORS], ad.obs[_LEAKAGE_TARGET])
 
 
 class Benchmarker:
@@ -113,6 +149,12 @@ class Benchmarker:
         Specification of which bio conservation metrics to run in the pipeline.
     batch_correction_metrics
         Specification of which batch correction metrics to run in the pipeline.
+    disentanglement_metrics
+        Specification of which disentanglement metrics to run in the pipeline.
+    disentanglement_factor_keys
+        Keys in `adata.obs` that contain the discrete factors used for disentanglement metrics.
+    leakage_target_key
+        Optional key in `adata.obs` used as the prediction target for fairness leakage metrics.
     pre_integrated_embedding_obsm_key
         Obsm key containing a non-integrated embedding of the data. If `None`, the embedding will be computed
         in the prepare step. See the notes below for more information.
@@ -142,16 +184,23 @@ class Benchmarker:
         embedding_obsm_keys: list[str],
         bio_conservation_metrics: BioConservation | None = BioConservation(),
         batch_correction_metrics: BatchCorrection | None = BatchCorrection(),
+        disentanglement_metrics: Disentanglement | None = None,
+        disentanglement_factor_keys: list[str] | None = None,
+        leakage_target_key: str | None = None,
         pre_integrated_embedding_obsm_key: str | None = None,
         n_jobs: int = 1,
         progress_bar: bool = True,
         solver: str = "arpack",
+        aggregate_metric_weights: dict[str, float] | None = None,
     ):
         self._adata = adata
         self._embedding_obsm_keys = embedding_obsm_keys
         self._pre_integrated_embedding_obsm_key = pre_integrated_embedding_obsm_key
         self._bio_conservation_metrics = bio_conservation_metrics
         self._batch_correction_metrics = batch_correction_metrics
+        self._disentanglement_metrics = disentanglement_metrics
+        self._disentanglement_factor_keys = disentanglement_factor_keys
+        self._leakage_target_key = leakage_target_key
         self._results = pd.DataFrame(columns=list(self._embedding_obsm_keys) + [_METRIC_TYPE])
         self._emb_adatas = {}
         self._neighbor_values = (15, 50, 90)
@@ -163,15 +212,54 @@ class Benchmarker:
         self._progress_bar = progress_bar
         self._compute_neighbors = True
         self._solver = solver
+        self._aggregate_metric_weights = aggregate_metric_weights
 
-        if self._bio_conservation_metrics is None and self._batch_correction_metrics is None:
-            raise ValueError("Either batch or bio metrics must be defined.")
+        if (
+            self._bio_conservation_metrics is None
+            and self._batch_correction_metrics is None
+            and self._disentanglement_metrics is None
+        ):
+            raise ValueError("At least one metric collection must be defined.")
+        if self._disentanglement_metrics is not None and not self._disentanglement_factor_keys:
+            raise ValueError("`disentanglement_factor_keys` must be provided when disentanglement metrics are enabled.")
+        if self._disentanglement_factor_keys is not None:
+            missing_factor_keys = [key for key in self._disentanglement_factor_keys if key not in self._adata.obs]
+            if missing_factor_keys:
+                raise ValueError(f"Factor keys not found in `adata.obs`: {missing_factor_keys}")
+        if self._leakage_target_key is not None and self._leakage_target_key not in self._adata.obs:
+            raise ValueError(f"Leakage target key `{self._leakage_target_key}` not found in `adata.obs`.")
+        if (
+            self._disentanglement_metrics is not None
+            and self._leakage_target_key is None
+            and getattr(self._disentanglement_metrics, "fairness_leakage") is not False
+        ):
+            raise ValueError("`leakage_target_key` must be provided when `fairness_leakage` is enabled.")
 
         self._metric_collection_dict = {}
         if self._bio_conservation_metrics is not None:
             self._metric_collection_dict.update({"Bio conservation": self._bio_conservation_metrics})
         if self._batch_correction_metrics is not None:
             self._metric_collection_dict.update({"Batch correction": self._batch_correction_metrics})
+        if self._disentanglement_metrics is not None:
+            self._metric_collection_dict.update({"Disentanglement": self._disentanglement_metrics})
+
+    def _resolve_aggregate_weights(self, metric_types: list[str]) -> dict[str, float]:
+        if self._aggregate_metric_weights is not None:
+            weights = {metric_type: self._aggregate_metric_weights[metric_type] for metric_type in metric_types}
+        elif metric_types == ["Bio conservation", "Batch correction"]:
+            weights = {"Bio conservation": 0.6, "Batch correction": 0.4}
+        else:
+            default_weights = {
+                "Bio conservation": 0.4,
+                "Batch correction": 0.3,
+                "Disentanglement": 0.3,
+            }
+            weights = {metric_type: default_weights[metric_type] for metric_type in metric_types}
+
+        weight_sum = sum(weights.values())
+        if weight_sum <= 0:
+            raise ValueError("Aggregate metric weights must sum to a positive value.")
+        return {metric_type: weight / weight_sum for metric_type, weight in weights.items()}
 
     def prepare(self, neighbor_computer: Callable[[np.ndarray, int], NeighborsResults] | None = None) -> None:
         """Prepare the data for benchmarking.
@@ -198,6 +286,14 @@ class Benchmarker:
             self._emb_adatas[emb_key].obs[_BATCH] = np.asarray(self._adata.obs[self._batch_key].values)
             self._emb_adatas[emb_key].obs[_LABELS] = np.asarray(self._adata.obs[self._label_key].values)
             self._emb_adatas[emb_key].obsm[_X_PRE] = self._adata.obsm[self._pre_integrated_embedding_obsm_key]
+            if self._disentanglement_factor_keys is not None:
+                self._emb_adatas[emb_key].uns[_DISENTANGLEMENT_FACTORS] = self._adata.obs[
+                    self._disentanglement_factor_keys
+                ].copy()
+            if self._leakage_target_key is not None:
+                self._emb_adatas[emb_key].obs[_LEAKAGE_TARGET] = np.asarray(
+                    self._adata.obs[self._leakage_target_key].values
+                )
 
         # Compute neighbors
         if self._compute_neighbors:
@@ -298,10 +394,11 @@ class Benchmarker:
 
         # Compute scores
         per_class_score = df.groupby(_METRIC_TYPE).mean().transpose()
-        # This is the default scIB weighting from the manuscript
-        if self._batch_correction_metrics is not None and self._bio_conservation_metrics is not None:
-            per_class_score["Total"] = (
-                0.4 * per_class_score["Batch correction"] + 0.6 * per_class_score["Bio conservation"]
+        metric_types = list(per_class_score.columns)
+        if len(metric_types) > 1:
+            aggregate_weights = self._resolve_aggregate_weights(metric_types)
+            per_class_score["Total"] = sum(
+                aggregate_weights[metric_type] * per_class_score[metric_type] for metric_type in metric_types
             )
         df = pd.concat([df.transpose(), per_class_score], axis=1)
         df.loc[_METRIC_TYPE, per_class_score.columns] = _AGGREGATE_SCORE
@@ -325,12 +422,11 @@ class Benchmarker:
         # Do not want to plot what kind of metric it is
         plot_df = df.drop(_METRIC_TYPE, axis=0)
         # Sort by total score
-        if self._batch_correction_metrics is not None and self._bio_conservation_metrics is not None:
+        if "Total" in plot_df.columns:
             sort_col = "Total"
-        elif self._batch_correction_metrics is not None:
-            sort_col = "Batch correction"
         else:
-            sort_col = "Bio conservation"
+            score_cols = df.columns[df.loc[_METRIC_TYPE] == _AGGREGATE_SCORE]
+            sort_col = score_cols[0]
         plot_df = plot_df.sort_values(by=sort_col, ascending=False).astype(np.float64)
         plot_df["Method"] = plot_df.index
 

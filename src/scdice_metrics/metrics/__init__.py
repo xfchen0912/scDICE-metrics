@@ -1,3 +1,12 @@
+from ._disentanglement import (
+    assign_latent_blocks_by_mi,
+    classifier_attribute_gap,
+    encode_factors,
+    fairness_leakage,
+    mig,
+    mixed_ksg_mi,
+    mixed_ksg_mig,
+)
 from ._graph_connectivity import graph_connectivity
 from ._isolated_labels import isolated_labels
 from ._kbet import kbet, kbet_per_label
@@ -20,4 +29,11 @@ __all__ = [
     "kbet",
     "kbet_per_label",
     "graph_connectivity",
+    "encode_factors",
+    "assign_latent_blocks_by_mi",
+    "mixed_ksg_mi",
+    "mig",
+    "mixed_ksg_mig",
+    "classifier_attribute_gap",
+    "fairness_leakage",
 ]
