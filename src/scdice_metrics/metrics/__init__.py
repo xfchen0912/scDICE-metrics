@@ -13,7 +13,15 @@ from ._kbet import kbet, kbet_per_label
 from ._lisi import clisi_knn, ilisi_knn, lisi_knn
 from ._nmi_ari import nmi_ari_cluster_labels_kmeans, nmi_ari_cluster_labels_leiden
 from ._pcr_comparison import pcr_comparison
+from ._perturbation import (
+    average_of_perturbation_centroids,
+    calculate_centroid_accuracies,
+    get_perts,
+    pearson_delta_reference_metrics,
+    score_centroids,
+)
 from ._silhouette import bras, silhouette_batch, silhouette_label
+from ._spatial_clustering import chaos, pas
 
 __all__ = [
     "isolated_labels",
@@ -36,4 +44,11 @@ __all__ = [
     "mixed_ksg_mig",
     "classifier_attribute_gap",
     "fairness_leakage",
+    "pearson_delta_reference_metrics",
+    "calculate_centroid_accuracies",
+    "average_of_perturbation_centroids",
+    "get_perts",
+    "score_centroids",
+    "chaos",
+    "pas",
 ]

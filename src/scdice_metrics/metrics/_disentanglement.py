@@ -5,7 +5,6 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 import scipy.spatial as ss
-import xgboost as xgb
 from fairlearn.metrics import (
     demographic_parity_difference,
     demographic_parity_ratio,
@@ -13,7 +12,8 @@ from fairlearn.metrics import (
 )
 from scipy.special import digamma
 from scipy.stats import entropy
-from sklearn.base import clone
+from sklearn.base import BaseEstimator, clone
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.model_selection import StratifiedKFold
 from sklearn.utils import check_array
@@ -304,15 +304,13 @@ def mixed_ksg_mig(
     }
 
 
-def _default_classifier(random_state: int) -> xgb.XGBClassifier:
-    return xgb.XGBClassifier(
-        tree_method="hist",
-        n_estimators=64,
+def _default_classifier(random_state: int) -> HistGradientBoostingClassifier:
+    """Histogram-based gradient boosting (sklearn), analogous to XGBoost ``tree_method='hist'``."""
+    return HistGradientBoostingClassifier(
+        max_iter=64,
         max_depth=4,
         learning_rate=0.1,
-        subsample=0.9,
-        colsample_bytree=0.9,
-        eval_metric="mlogloss",
+        max_features=0.9,
         random_state=random_state,
     )
 
@@ -330,7 +328,7 @@ def classifier_attribute_gap(
     factors: pd.DataFrame | Mapping[str, np.ndarray],
     cv_splits: int = 5,
     random_state: int = 94,
-    classifier: xgb.XGBClassifier | None = None,
+    classifier: BaseEstimator | None = None,
 ) -> dict[str, float]:
     """Compute classifier-based attribute gap metrics.
 
@@ -345,7 +343,8 @@ def classifier_attribute_gap(
     random_state
         Random seed used for latent block assignment and classifier training.
     classifier
-        Optional classifier prototype. If `None`, an `xgboost.XGBClassifier` is used.
+        Optional sklearn-compatible classifier (``fit`` / ``predict`` / ``score``).
+        If `None`, a :class:`~sklearn.ensemble.HistGradientBoostingClassifier` is used.
 
     Returns
     -------
@@ -431,7 +430,7 @@ def fairness_leakage(
     target: np.ndarray,
     cv_splits: int = 5,
     random_state: int = 94,
-    classifier: xgb.XGBClassifier | None = None,
+    classifier: BaseEstimator | None = None,
 ) -> dict[str, float]:
     """Measure factor leakage from complement latents using fairness metrics.
 
@@ -448,7 +447,8 @@ def fairness_leakage(
     random_state
         Random seed used for latent block assignment and classifier training.
     classifier
-        Optional classifier prototype. If `None`, an `xgboost.XGBClassifier` is used.
+        Optional sklearn-compatible classifier (``fit`` / ``predict`` / ``score``).
+        If `None`, a :class:`~sklearn.ensemble.HistGradientBoostingClassifier` is used.
 
     Returns
     -------

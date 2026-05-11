@@ -18,6 +18,7 @@ from scib_metrics.benchmark import Benchmarker
     benchmark.Benchmarker
     benchmark.BioConservation
     benchmark.BatchCorrection
+    benchmark.SpatialClustering
 ```
 
 ## Metrics
@@ -48,6 +49,8 @@ scib_metrics.ilisi_knn(...)
     kbet
     kbet_per_label
     graph_connectivity
+    chaos
+    pas
 ```
 
 ## Utils
@@ -83,6 +86,7 @@ scib_metrics.ilisi_knn(...)
 
     nearest_neighbors.pynndescent
     nearest_neighbors.jax_approx_min_k
+    nearest_neighbors.rapids
     nearest_neighbors.NeighborsResults
 ```
 

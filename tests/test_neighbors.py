@@ -2,13 +2,21 @@ import numpy as np
 import pytest
 import scanpy as sc
 
-from scdice_metrics.nearest_neighbors import jax_approx_min_k, pynndescent
+from scdice_metrics.nearest_neighbors import jax_approx_min_k, pynndescent, rapids
 from tests.utils.data import dummy_benchmarker_adata
 
 
 def test_jax_neighbors():
     ad, emb_keys, _, _ = dummy_benchmarker_adata()
     output = jax_approx_min_k(ad.obsm[emb_keys[0]], 10)
+    assert output.distances.shape == (ad.n_obs, 10)
+
+
+def test_rapids_neighbors():
+    pytest.importorskip("cuml")
+    pytest.importorskip("cupy")
+    ad, emb_keys, _, _ = dummy_benchmarker_adata()
+    output = rapids(ad.obsm[emb_keys[0]], 10)
     assert output.distances.shape == (ad.n_obs, 10)
 
 

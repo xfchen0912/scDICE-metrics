@@ -2,7 +2,13 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import LogisticRegression
 
-from scdice_metrics.benchmark import BatchCorrection, Benchmarker, BioConservation, Disentanglement
+from scdice_metrics.benchmark import (
+    BatchCorrection,
+    Benchmarker,
+    BioConservation,
+    Disentanglement,
+    SpatialClustering,
+)
 from scdice_metrics.nearest_neighbors import jax_approx_min_k
 from tests.utils.data import dummy_benchmarker_adata, dummy_disentanglement_benchmarker_adata
 
@@ -128,3 +134,30 @@ def test_benchmarker_disentanglement_metrics():
     assert "Leakage accuracy" in clean_results.columns
     assert "Total" not in clean_results.columns
     assert clean_results.loc["X_good", "Disentanglement"] > clean_results.loc["X_bad", "Disentanglement"]
+
+
+def test_benchmarker_spatial_clustering_metrics():
+    ad, emb_keys, batch_key, labels_key = dummy_benchmarker_adata()
+    ad.obs["domain"] = ad.obs[labels_key].astype(str)
+    ad.obsm["spatial"] = ad.X[:, :2]
+    bm = Benchmarker(
+        ad,
+        batch_key,
+        labels_key,
+        emb_keys,
+        bio_conservation_metrics=None,
+        batch_correction_metrics=None,
+        spatial_clustering_metrics=SpatialClustering(),
+        spatial_cluster_key="domain",
+        spatial_obsm_key="spatial",
+        progress_bar=False,
+    )
+    bm.benchmark()
+    results = bm.get_results(clean_names=False)
+    clean_results = bm.get_results()
+    assert isinstance(results, pd.DataFrame)
+    assert "chaos" in results.columns
+    assert "pas" in results.columns
+    assert "Spatial clustering" in results.columns
+    assert "CHAOS" in clean_results.columns
+    assert "PAS" in clean_results.columns

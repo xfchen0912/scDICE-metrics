@@ -24,7 +24,6 @@ dependencies = [
     "pandas",
     "scipy",
     "scikit-learn",
-    "xgboost",
     "fairlearn",
     "scanpy>=1.9",
     "rich",
