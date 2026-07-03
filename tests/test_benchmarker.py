@@ -5,6 +5,7 @@ from sklearn.linear_model import LogisticRegression
 from scdice_metrics.benchmark import (
     BatchCorrection,
     Benchmarker,
+    BenchmarkTemplate,
     BioConservation,
     Disentanglement,
     SpatialClustering,
@@ -138,8 +139,81 @@ def test_benchmarker_disentanglement_metrics():
 
 def test_benchmarker_spatial_clustering_metrics():
     ad, emb_keys, batch_key, labels_key = dummy_benchmarker_adata()
-    ad.obs["domain"] = ad.obs[labels_key].astype(str)
     ad.obsm["spatial"] = ad.X[:, :2]
+    bm = Benchmarker(
+        ad,
+        batch_key,
+        labels_key,
+        emb_keys[:2],
+        bio_conservation_metrics=None,
+        batch_correction_metrics=None,
+        spatial_clustering_metrics=SpatialClustering(hom=True, com=True),
+        spatial_cluster_key=None,
+        spatial_obsm_key="spatial",
+        compute_neighbors=False,
+        progress_bar=False,
+    )
+    bm.benchmark()
+    results = bm.get_results(clean_names=False, display_template="legacy")
+    sdmbench_results = bm.get_results(clean_names=False, display_template="sdmbench")
+    clean_results = bm.get_results(display_template="sdmbench")
+    assert isinstance(results, pd.DataFrame)
+    assert "hom" in results.columns
+    assert "com" in results.columns
+    assert "chaos" in results.columns
+    assert "pas" in results.columns
+    assert "Accuracy" in sdmbench_results.columns
+    assert bm.spatial_cluster_obs_keys[emb_keys[0]] in ad.obs
+    assert bm.spatial_cluster_obs_keys[emb_keys[1]] in ad.obs
+    assert "Continuity" in sdmbench_results.columns
+    assert "HOM" in clean_results.columns
+    assert "COM" in clean_results.columns
+    assert "CHAOS" in clean_results.columns
+    assert "PAS" in clean_results.columns
+    assert "Accuracy" in clean_results.columns
+    assert "Continuity" in clean_results.columns
+
+
+def test_benchmarker_spatial_and_bio_label_keys():
+    ad, emb_keys, batch_key, labels_key = dummy_benchmarker_adata()
+    ad.obs["domain"] = (ad.obs[labels_key].astype(int) % 3).astype(str)
+    ad.obsm["spatial"] = ad.X[:, :2]
+
+    bm = Benchmarker(
+        ad,
+        batch_key,
+        labels_key,
+        emb_keys[:1],
+        bio_conservation_metrics=BioConservation(
+            nmi_ari_cluster_labels_kmeans=True,
+            nmi_ari_cluster_labels_leiden=False,
+            isolated_labels=False,
+            silhouette_label=False,
+            clisi_knn=False,
+        ),
+        batch_correction_metrics=None,
+        spatial_clustering_metrics=SpatialClustering(hom=True, com=True, chaos=False, pas=False),
+        spatial_label_key="domain",
+        spatial_cluster_key=None,
+        spatial_obsm_key="spatial",
+        compute_neighbors=True,
+        progress_bar=False,
+    )
+    bm.benchmark()
+    results = bm.get_results(clean_names=False)
+    assert "nmi_ari_cluster_labels_kmeans_nmi" in results.columns
+    assert "hom" in results.columns
+    assert "com" in results.columns
+
+
+def test_benchmarker_custom_display_template():
+    ad, emb_keys, batch_key, labels_key = dummy_benchmarker_adata()
+    ad.obsm["spatial"] = ad.X[:, :2]
+    custom = BenchmarkTemplate(
+        name="custom_spatial",
+        groups={"Label match": ("hom", "com"), "Geometry": ("chaos", "pas")},
+        weights={"Label match": 0.6, "Geometry": 0.4},
+    )
     bm = Benchmarker(
         ad,
         batch_key,
@@ -147,17 +221,14 @@ def test_benchmarker_spatial_clustering_metrics():
         emb_keys,
         bio_conservation_metrics=None,
         batch_correction_metrics=None,
-        spatial_clustering_metrics=SpatialClustering(),
-        spatial_cluster_key="domain",
+        spatial_clustering_metrics=SpatialClustering(hom=True, com=True, chaos=True, pas=True),
         spatial_obsm_key="spatial",
+        display_template=custom,
+        compute_neighbors=False,
         progress_bar=False,
     )
     bm.benchmark()
     results = bm.get_results(clean_names=False)
-    clean_results = bm.get_results()
-    assert isinstance(results, pd.DataFrame)
-    assert "chaos" in results.columns
-    assert "pas" in results.columns
-    assert "Spatial clustering" in results.columns
-    assert "CHAOS" in clean_results.columns
-    assert "PAS" in clean_results.columns
+    assert "Label match" in results.columns
+    assert "Geometry" in results.columns
+    assert "Total" in results.columns

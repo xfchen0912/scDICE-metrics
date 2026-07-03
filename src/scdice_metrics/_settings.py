@@ -26,7 +26,7 @@ class ScibConfig:
     def __init__(
         self,
         verbosity: int = logging.INFO,
-        progress_bar_style: Literal["rich", "tqdm"] = "tqdm",
+        progress_bar_style: Literal["rich", "tqdm"] = "rich",
         jax_preallocate_gpu_memory: bool = False,
     ):
         if progress_bar_style not in ["rich", "tqdm"]:

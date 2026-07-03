@@ -31,6 +31,13 @@ The implementations use [JAX](https://jax.readthedocs.io/en/latest/) when possib
 ### Integration benchmark metrics
 - **Bio conservation**: `isolated_labels`, `nmi_ari_cluster_labels_kmeans`, `nmi_ari_cluster_labels_leiden`, `silhouette_label`, `clisi_knn`
 - **Batch correction**: `bras`, `ilisi_knn`, `kbet_per_label`, `graph_connectivity`, `pcr_comparison`
+- **Spatial clustering**: `hom`, `com`, `chaos`, `pas`; optional auto-clustering via
+  `spatial_cluster_labels_leiden` / `Benchmarker.prepare_spatial_clusters()` (per embedding)
+- **Display templates** for `Benchmarker.get_results` / `plot_results_table`:
+  - `display_template="scib"` → Bio conservation + Batch correction (0.6 / 0.4)
+  - `display_template="sdmbench"` → Spatial Accuracy (`hom`, `com`) + Continuity (`chaos`, `pas`)
+  - `display_template="auto"` (default) infers grouping from enabled metric collections
+  - pass a custom `BenchmarkTemplate` for arbitrary groups and weights
 
 ### Counterfactual & Perturbation Metrics
 - **Interventional NLL** *(planned, not yet implemented)*: Evaluates the likelihood of held-out perturbation data to assess out-of-distribution (OOD) generalization (from sVAE+)
@@ -92,6 +99,7 @@ bm = Benchmarker(
     adata=adata,
     batch_key="batch",
     label_key="cell_type",
+    spatial_label_key="domain_truth",  # optional; HOM/COM ground truth (defaults to label_key)
     embedding_obsm_keys=["X_scDICE", "X_baseline"],
     disentanglement_metrics=Disentanglement(
         mig=True,

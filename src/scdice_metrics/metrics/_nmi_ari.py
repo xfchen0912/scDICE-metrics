@@ -5,13 +5,65 @@ import warnings
 import igraph
 import numpy as np
 from scipy.sparse import spmatrix
-from sklearn.metrics.cluster import adjusted_rand_score, normalized_mutual_info_score
+from sklearn.metrics.cluster import adjusted_rand_score, completeness_score, homogeneity_score, normalized_mutual_info_score
 from sklearn.utils import check_array
 
 from scdice_metrics.nearest_neighbors import NeighborsResults
 from scdice_metrics.utils import KMeans
 
 logger = logging.getLogger(__name__)
+
+
+def _check_label_pair(labels: np.ndarray, labels_pred: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    labels_arr = np.asarray(labels).ravel()
+    labels_pred_arr = np.asarray(labels_pred).ravel()
+    if labels_arr.shape[0] != labels_pred_arr.shape[0]:
+        raise ValueError("`labels` and `labels_pred` must have the same number of cells.")
+    return labels_arr, labels_pred_arr
+
+
+def hom(labels: np.ndarray, labels_pred: np.ndarray) -> float:
+    """Compute homogeneity between true and predicted cluster labels.
+
+    Homogeneity is 1.0 when each predicted cluster contains only members of a
+    single true class.
+
+    Parameters
+    ----------
+    labels
+        Ground-truth labels of shape ``(n_cells,)``.
+    labels_pred
+        Predicted cluster labels of shape ``(n_cells,)``.
+
+    Returns
+    -------
+    float
+        Homogeneity score in ``[0, 1]``.
+    """
+    labels_arr, labels_pred_arr = _check_label_pair(labels, labels_pred)
+    return float(homogeneity_score(labels_arr, labels_pred_arr))
+
+
+def com(labels: np.ndarray, labels_pred: np.ndarray) -> float:
+    """Compute completeness between true and predicted cluster labels.
+
+    Completeness is 1.0 when all members of each true class are assigned to the
+    same predicted cluster.
+
+    Parameters
+    ----------
+    labels
+        Ground-truth labels of shape ``(n_cells,)``.
+    labels_pred
+        Predicted cluster labels of shape ``(n_cells,)``.
+
+    Returns
+    -------
+    float
+        Completeness score in ``[0, 1]``.
+    """
+    labels_arr, labels_pred_arr = _check_label_pair(labels, labels_pred)
+    return float(completeness_score(labels_arr, labels_pred_arr))
 
 
 def _compute_clustering_kmeans(X: np.ndarray, n_clusters: int) -> np.ndarray:

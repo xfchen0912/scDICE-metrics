@@ -11,7 +11,7 @@ from ._graph_connectivity import graph_connectivity
 from ._isolated_labels import isolated_labels
 from ._kbet import kbet, kbet_per_label
 from ._lisi import clisi_knn, ilisi_knn, lisi_knn
-from ._nmi_ari import nmi_ari_cluster_labels_kmeans, nmi_ari_cluster_labels_leiden
+from ._nmi_ari import com, hom, nmi_ari_cluster_labels_kmeans, nmi_ari_cluster_labels_leiden
 from ._pcr_comparison import pcr_comparison
 from ._perturbation import (
     average_of_perturbation_centroids,
@@ -21,7 +21,14 @@ from ._perturbation import (
     score_centroids,
 )
 from ._silhouette import bras, silhouette_batch, silhouette_label
-from ._spatial_clustering import chaos, pas
+from ._spatial_clustering import (
+    chaos,
+    pas,
+    pas_from_neighbors,
+    spatial_cluster_labels_from_spatial_coords,
+    spatial_cluster_labels_kmeans,
+    spatial_cluster_labels_leiden,
+)
 
 __all__ = [
     "isolated_labels",
@@ -34,6 +41,8 @@ __all__ = [
     "lisi_knn",
     "nmi_ari_cluster_labels_kmeans",
     "nmi_ari_cluster_labels_leiden",
+    "hom",
+    "com",
     "kbet",
     "kbet_per_label",
     "graph_connectivity",
@@ -51,4 +60,8 @@ __all__ = [
     "score_centroids",
     "chaos",
     "pas",
+    "pas_from_neighbors",
+    "spatial_cluster_labels_kmeans",
+    "spatial_cluster_labels_leiden",
+    "spatial_cluster_labels_from_spatial_coords",
 ]

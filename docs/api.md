@@ -16,9 +16,24 @@ from scib_metrics.benchmark import Benchmarker
     :toctree: generated
 
     benchmark.Benchmarker
+    benchmark.BenchmarkTemplate
     benchmark.BioConservation
     benchmark.BatchCorrection
     benchmark.SpatialClustering
+    benchmark.SpatialClusteringPrepare
+    benchmark.prepare_spatial_clusters
+    benchmark.infer_template
+```
+
+Spatial clustering helpers (also importable from ``scdice_metrics``):
+
+```{eval-rst}
+.. autosummary::
+    :toctree: generated
+
+    spatial_cluster_labels_leiden
+    spatial_cluster_labels_kmeans
+    spatial_cluster_labels_from_spatial_coords
 ```
 
 ## Metrics
@@ -40,6 +55,8 @@ scib_metrics.ilisi_knn(...)
     isolated_labels
     nmi_ari_cluster_labels_kmeans
     nmi_ari_cluster_labels_leiden
+    hom
+    com
     pcr_comparison
     silhouette_label
     silhouette_batch

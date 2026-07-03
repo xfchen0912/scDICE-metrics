@@ -13,6 +13,8 @@ from sklearn.cluster import KMeans as SKMeans
 from sklearn.datasets import make_blobs
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import silhouette_samples as sk_silhouette_samples
+from sklearn.metrics.cluster import completeness_score as sk_completeness_score
+from sklearn.metrics.cluster import homogeneity_score as sk_homogeneity_score
 from sklearn.metrics.pairwise import pairwise_distances_argmin
 from sklearn.neighbors import NearestNeighbors
 
@@ -126,6 +128,14 @@ def test_nmi_ari_cluster_labels_leiden_reproducibility():
     nmi2, ari2 = out2["nmi"], out2["ari"]
     assert nmi1 == nmi2
     assert ari1 == ari2
+
+
+def test_hom_com():
+    labels = np.array(["a", "a", "b", "b", "c", "c"])
+    labels_pred = np.array([0, 0, 1, 2, 2, 2])
+
+    assert scdice_metrics.hom(labels, labels_pred) == sk_homogeneity_score(labels, labels_pred)
+    assert scdice_metrics.com(labels, labels_pred) == sk_completeness_score(labels, labels_pred)
 
 
 def test_leiden_graph_construction():
