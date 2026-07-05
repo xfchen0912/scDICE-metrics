@@ -5,12 +5,12 @@
 Import as:
 
 ```
-from scib_metrics.benchmark import Benchmarker
+from scdice_metrics.benchmark import Benchmarker
 ```
 
 ```{eval-rst}
-.. module:: scib_metrics.benchmark
-.. currentmodule:: scib_metrics
+.. module:: scdice_metrics.benchmark
+.. currentmodule:: scdice_metrics
 
 .. autosummary::
     :toctree: generated
@@ -23,6 +23,12 @@ from scib_metrics.benchmark import Benchmarker
     benchmark.SpatialClusteringPrepare
     benchmark.prepare_spatial_clusters
     benchmark.infer_template
+    benchmark.SwapSpec
+    benchmark.make_swap_specs
+    benchmark.summarize_swap_specs
+    benchmark.CounterfactualTask
+    benchmark.Counterfactual
+    benchmark.CounterfactualBenchmarker
 ```
 
 Spatial clustering helpers (also importable from ``scdice_metrics``):
@@ -41,13 +47,13 @@ Spatial clustering helpers (also importable from ``scdice_metrics``):
 Import as:
 
 ```
-import scib_metrics
-scib_metrics.ilisi_knn(...)
+import scdice_metrics as sm
+sm.ilisi_knn(...)
 ```
 
 ```{eval-rst}
-.. module:: scib_metrics
-.. currentmodule:: scib_metrics
+.. module:: scdice_metrics
+.. currentmodule:: scdice_metrics
 
 .. autosummary::
     :toctree: generated
@@ -68,13 +74,29 @@ scib_metrics.ilisi_knn(...)
     graph_connectivity
     chaos
     pas
+    pseudobulk_pearson
+    pseudobulk_spearman
+    pseudobulk_rmse
+    pseudobulk_mae
+    systema_pearson_delta_metrics
+    delta_pearson
+    delta_spearman
+    delta_cosine
+    delta_rmse
+    delta_mae
+    delta_profile_metrics
+    signed_de_recovery
+    energy_distance
+    mmd_rbf
+    mean_gene_wasserstein
+    pearson_delta_reference_metrics
 ```
 
 ## Utils
 
 ```{eval-rst}
-.. module:: scib_metrics.utils
-.. currentmodule:: scib_metrics
+.. module:: scdice_metrics.utils
+.. currentmodule:: scdice_metrics
 
 .. autosummary::
     :toctree: generated
@@ -95,8 +117,8 @@ scib_metrics.ilisi_knn(...)
 ### Nearest neighbors
 
 ```{eval-rst}
-.. module:: scib_metrics.nearest_neighbors
-.. currentmodule:: scib_metrics
+.. module:: scdice_metrics.nearest_neighbors
+.. currentmodule:: scdice_metrics
 
 .. autosummary::
     :toctree: generated
@@ -109,7 +131,7 @@ scib_metrics.ilisi_knn(...)
 
 ## Settings
 
-An instance of the {class}`~scib_metrics._settings.ScibConfig` is available as `scib_metrics.settings` and allows configuring scib_metrics.
+An instance of the {class}`~scdice_metrics._settings.ScibConfig` is available as `scdice_metrics.settings` and allows configuring scDICE-metrics.
 
 ```{eval-rst}
 .. autosummary::

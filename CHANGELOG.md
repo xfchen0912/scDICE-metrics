@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning][].
 [keep a changelog]: https://keepachangelog.com/en/1.0.0/
 [semantic versioning]: https://semver.org/spec/v2.0.0.html
 
+## Unreleased
+
+### Added
+
+- Added cell-type-specific condition-swap and niche-swap OOD task generation (`make_swap_specs`, `SwapSpec`, `summarize_swap_specs`).
+- Added counterfactual response metrics (pseudobulk, Systema Pearson-delta, delta/effect, signed DE recovery, distribution distances).
+- Added `CounterfactualBenchmarker` with long-format results and swap-aware summaries (`get_swap_summary`).
+
 ## 0.1.0 (2025-12-17)
 
 ### Changed
