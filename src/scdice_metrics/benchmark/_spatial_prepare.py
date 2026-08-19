@@ -52,9 +52,9 @@ class SpatialClusteringPrepare:
         How to relabel clusters after assignment:
 
         - ``"ground_truth"`` (default): match each predicted cluster to the
-          ground-truth region with the most similar cell count (Hungarian
-          matching). Requires ``spatial_label_key`` in ``adata.obs``; otherwise
-          falls back to ``"cell_count"``.
+          ground-truth region with the most overlapping cells (Hungarian on the
+          confusion matrix). Requires ``spatial_label_key`` in ``adata.obs``;
+          otherwise falls back to ``"cell_count"``.
         - ``"cell_count"``: labels ``0..K-1`` by descending predicted cluster size.
         - ``"none"``: keep raw algorithm labels unchanged.
         - ``Sequence`` of original cluster ids: custom mapping order; unlisted ids

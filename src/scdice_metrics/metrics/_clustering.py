@@ -71,10 +71,17 @@ def _ground_truth_matching_details(
         ordered = reorder_cluster_labels(pred_arr, order="cell_count")
         return ordered, [], records
 
-    cost = np.abs(pred_counts[:, None].astype(float) - gt_counts_ordered[None, :].astype(float))
+    pred_index = {label: i for i, label in enumerate(pred_unique)}
+    gt_index = {label: i for i, label in enumerate(ordered_gt)}
+    overlap = np.zeros((n_pred, n_gt), dtype=float)
+    for pred_label, gt_label in zip(pred_arr, gt_arr):
+        overlap[pred_index[pred_label], gt_index[gt_label]] += 1.0
+
+    # Maximize shared cells (``crosstab`` + ``linear_sum_assignment(-conf)``).
+    cost = -overlap
     max_n = max(n_pred, n_gt)
     if n_pred != n_gt:
-        padded = np.full((max_n, max_n), float(cost.max() + 1.0) if cost.size else 1.0)
+        padded = np.zeros((max_n, max_n), dtype=float)
         padded[:n_pred, :n_gt] = cost
         row_ind, col_ind = linear_sum_assignment(padded)
         pairs = [(int(r), int(c)) for r, c in zip(row_ind, col_ind) if r < n_pred and c < n_gt]
@@ -100,7 +107,8 @@ def _ground_truth_matching_details(
                 "gt_label": gt_label,
                 "gt_count": int(gt_counts_ordered[gt_idx]),
                 "final_label": final_label,
-                "match_type": "ground_truth_count",
+                "overlap": int(overlap[pred_idx, gt_idx]),
+                "match_type": "ground_truth_overlap",
             }
         )
 
@@ -150,7 +158,7 @@ def explain_cluster_order(
     effective = resolve_effective_cluster_order(order, ground_truth)
     lines = [
         f"requested cluster_order: {order!r}",
-        f"effective cluster_order: {effective}",
+        f"effective cluster_order: {effective!r}",
         f"raw cluster sizes: {_format_label_counts(raw_labels)}",
         f"final cluster sizes: {_format_label_counts(ordered_labels)}",
     ]
@@ -161,14 +169,15 @@ def explain_cluster_order(
     if effective == "ground_truth" and ground_truth is not None:
         lines.append(f"cluster_label_style: {label_style}")
         _, _, records = _ground_truth_matching_details(raw_labels, ground_truth, label_style=label_style)
-        lines.append("ground-truth count matching:")
+        lines.append("ground-truth overlap matching:")
         for record in records:
-            if record["match_type"] == "ground_truth_count":
+            if record["match_type"] == "ground_truth_overlap":
                 lines.append(
                     "  "
                     f"raw {record['raw_label']} (n={record['raw_count']}) -> "
                     f"{record['final_label']} "
-                    f"[GT {record['gt_label']} (n={record['gt_count']})]"
+                    f"[GT {record['gt_label']} (n={record['gt_count']}, "
+                    f"overlap={record['overlap']})]"
                 )
             else:
                 lines.append(
@@ -228,12 +237,13 @@ def match_cluster_labels_to_ground_truth(
     ground_truth: np.ndarray,
     label_style: ClusterLabelStyle = "ground_truth_name",
 ) -> tuple[np.ndarray, list]:
-    """Match predicted clusters to ground truth by similar cell counts.
+    """Match predicted clusters to ground truth by cell overlap.
 
-    Each predicted cluster is assigned to the ground-truth region with the closest
-    cell count (Hungarian matching). The returned label for a cluster is either the
-    matched ground-truth name/id or its rank among ground-truth regions sorted by
-    descending cell count (for color alignment).
+    Hungarian matching on the confusion matrix maximizes shared cells between
+    each predicted cluster and a unique ground-truth region (``crosstab`` +
+    ``linear_sum_assignment(-conf)``). The returned label is either the matched
+    ground-truth name or its rank among ground-truth regions sorted by descending
+    cell count (for scanpy palettes).
 
     Returns
     -------
@@ -264,8 +274,8 @@ def reorder_cluster_labels(
         Raw cluster assignments.
     order
         - ``"ground_truth"`` (default): match clusters to ground-truth regions by
-          similar cell counts; falls back to ``"cell_count"`` when ``ground_truth``
-          is unavailable.
+          overlapping cells (Hungarian on the confusion matrix); falls back to
+          ``"cell_count"`` when ``ground_truth`` is unavailable.
         - ``"cell_count"``: assign labels ``0..K-1`` by descending cluster size.
         - ``"none"``: keep raw assignments unchanged.
         - ``Sequence``: custom order of original cluster ids; index ``i`` in the
@@ -323,8 +333,9 @@ def apply_cluster_order(
     labels_arr = np.asarray(labels)
     if order is None:
         order = "ground_truth"
+    effective = resolve_effective_cluster_order(order, ground_truth)
 
-    if order == "ground_truth" and ground_truth is not None:
+    if effective == "ground_truth":
         new_labels, category_order = match_cluster_labels_to_ground_truth(
             labels_arr,
             ground_truth,
@@ -334,11 +345,11 @@ def apply_cluster_order(
 
     new_labels = reorder_cluster_labels(
         labels_arr,
-        order=order,
+        order=order if effective == "custom" else effective,
         ground_truth=ground_truth,
         label_style=label_style,
     )
-    if order == "cell_count":
+    if effective == "cell_count":
         unique, counts = np.unique(new_labels, return_counts=True)
         order_idx = sorted(range(len(unique)), key=lambda i: (-counts[i], str(unique[i])))
         category_order = [str(unique[i]) for i in order_idx]

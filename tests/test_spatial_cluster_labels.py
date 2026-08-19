@@ -5,6 +5,7 @@ from scdice_metrics.benchmark import Benchmarker, SpatialClustering, SpatialClus
 from scdice_metrics.benchmark._spatial_prepare import compute_spatial_cluster_labels
 from scdice_metrics.metrics import spatial_cluster_labels_kmeans, spatial_cluster_labels_leiden
 from scdice_metrics.metrics._clustering import (
+    apply_cluster_order,
     explain_cluster_order,
     match_cluster_labels_to_ground_truth,
     reorder_cluster_labels,
@@ -31,6 +32,19 @@ def test_match_cluster_labels_to_ground_truth_by_count():
     )
     assert list(matched) == ["A", "A", "A", "B", "B", "C", "C", "C", "C"]
     assert categories == ["C", "A", "B"]
+
+
+def test_match_cluster_labels_to_ground_truth_by_overlap_not_size():
+    """Cluster 0 is pure A (n=2) but B also has n=2; overlap must pick A, not size."""
+    gt = np.array(["A", "A", "A", "A", "B", "B"])
+    pred = np.array([0, 0, 1, 1, 1, 1])
+    matched, categories = match_cluster_labels_to_ground_truth(
+        pred,
+        gt,
+        label_style="ground_truth_name",
+    )
+    assert list(matched) == ["A", "A", "B", "B", "B", "B"]
+    assert categories == ["A", "B"]
 
 
 def test_match_cluster_labels_to_ground_truth_index_style():
@@ -172,8 +186,8 @@ def test_spatial_clustering_prepare_kmeans_with_custom_order():
         label_style=custom_cfg.cluster_label_style,
     )
     assert np.array_equal(
-        raw_labels[raw_labels == raw_labels[0]],
-        ordered_labels[ordered_labels == ordered_labels[0]],
+        raw_labels == raw_labels[0],
+        ordered_labels == ordered_labels[0],
     )
 
 

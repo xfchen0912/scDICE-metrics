@@ -59,7 +59,7 @@ Spatial-domain accuracy and continuity metrics follow the [SDMBench][ref-sdmbenc
 | `cluster_graph` | `"embedding"` | kNN graph on embedding or `"spatial"` coordinates (Leiden only) |
 | `optimize_resolution` | `True` | Search Leiden resolution to match `target_n_clusters` |
 | `target_n_clusters` | inferred from `spatial_label_key` | Desired cluster count |
-| `cluster_order` | `"ground_truth"` | Relabel clusters by Hungarian matching to ground truth, by cell count, custom order, or `"none"` |
+| `cluster_order` | `"ground_truth"` | Relabel clusters by overlap Hungarian matching to ground truth, by cell count, custom order, or `"none"` |
 | `build_spatial_neighbors` | `True` | Precompute spatial kNN for Leiden-on-spatial and PAS |
 
 ### Display templates

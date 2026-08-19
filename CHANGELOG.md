@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning][].
 
 ## Unreleased
 
+### Changed
+
+- Spatial-domain `cluster_order="ground_truth"` now uses overlap Hungarian matching on the confusion matrix (shared cells), not cluster-size matching.
+
 ### Added
 
 - Added cell-type-specific condition-swap and niche-swap OOD task generation (`make_swap_specs`, `SwapSpec`, `summarize_swap_specs`).
