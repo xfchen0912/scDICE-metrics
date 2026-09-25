@@ -13,12 +13,14 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from anndata import AnnData
+from matplotlib.figure import Figure
 from plottable import ColumnDefinition, Table
 from plottable.cmap import normed_cmap
 from plottable.plots import bar
 from sklearn.preprocessing import MinMaxScaler
 
 import scdice_metrics
+from scdice_metrics.benchmark._plot_tables import TableStyle, plot_funkyheatmap_table
 from scdice_metrics.benchmark._progress import NestedBenchmarkProgress, iter_progress, print_status
 from scdice_metrics.benchmark._spatial_prepare import (
     SpatialClusteringPrepare,
@@ -716,7 +718,8 @@ class Benchmarker:
         text_fontsize: int = 10,
         figsize: tuple[float, float] | None = None,
         display_template: BenchmarkTemplate | BenchmarkMode | None = None,
-    ) -> Table:
+        style: TableStyle = "plottable",
+    ) -> Table | Figure:
         """Plot the benchmarking results.
 
         Parameters
@@ -739,7 +742,13 @@ class Benchmarker:
             Optional explicit figure size. If `None`, a size is inferred from number of columns and embeddings.
         display_template
             Override the instance display template. See :class:`BenchmarkTemplate`.
+        style
+            Table renderer: ``"plottable"`` (default) or ``"funkyheatmap"`` (requires
+            ``funkyheatmappy``).
         """
+        if style not in ("plottable", "funkyheatmap"):
+            raise ValueError("style must be 'plottable' or 'funkyheatmap'")
+
         num_embeds = len(self._embedding_obsm_keys)
         circle_cmap_obj = mpl.colormaps.get_cmap(circle_cmap)
         score_cmap_obj = mpl.colormaps.get_cmap(score_cmap)
@@ -773,6 +782,20 @@ class Benchmarker:
             for col in other_cols:
                 if col in oriented.columns:
                     cmap_df[col] = oriented[col]
+
+        if style == "funkyheatmap":
+            return plot_funkyheatmap_table(
+                plot_df,
+                method_col="Method",
+                metric_cols=other_cols,
+                score_cols=list(score_cols),
+                metric_groups=df.loc[_METRIC_TYPE],
+                min_max_scale=min_max_scale,
+                show=show,
+                save_dir=save_dir,
+                circle_cmap=circle_cmap,
+                score_cmap=score_cmap,
+            )
 
         column_definitions = [
             ColumnDefinition("Method", width=1.5, textprops={"ha": "left", "weight": "bold"}),

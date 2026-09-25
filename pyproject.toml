@@ -62,6 +62,7 @@ test = [
     "numba>=0.57.1",
 ]
 parallel = ["joblib"]
+funkyheatmap = ["funkyheatmappy>=0.7.0,<0.8"]
 tutorial = [
     "rich",
     "scanorama",

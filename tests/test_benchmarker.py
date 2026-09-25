@@ -1,5 +1,7 @@
+import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
+from matplotlib.figure import Figure
 from sklearn.linear_model import LogisticRegression
 
 from scdice_metrics.benchmark import (
@@ -204,6 +206,24 @@ def test_benchmarker_spatial_and_bio_label_keys():
     assert "nmi_ari_cluster_labels_kmeans_nmi" in results.columns
     assert "hom" in results.columns
     assert "com" in results.columns
+
+
+def test_benchmarker_plot_results_table_funkyheatmap():
+    pytest.importorskip("funkyheatmappy")
+    ad, emb_keys, batch_key, labels_key = dummy_benchmarker_adata()
+    bm = Benchmarker(
+        ad,
+        batch_key,
+        labels_key,
+        emb_keys,
+        batch_correction_metrics=BatchCorrection(),
+        bio_conservation_metrics=BioConservation(),
+        progress_bar=False,
+    )
+    bm.benchmark()
+    fig = bm.plot_results_table(style="funkyheatmap", show=False)
+    assert isinstance(fig, Figure)
+    plt.close(fig)
 
 
 def test_benchmarker_custom_display_template():

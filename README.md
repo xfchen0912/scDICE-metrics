@@ -64,7 +64,7 @@ Spatial-domain accuracy and continuity metrics follow the [SDMBench][ref-sdmbenc
 
 ### Display templates
 
-`Benchmarker.get_results()` and `plot_results_table()` support configurable grouping and aggregate weights via `display_template`:
+`Benchmarker.get_results()` and `plot_results_table()` support configurable grouping and aggregate weights via `display_template`. Pass `style="funkyheatmap"` to `plot_results_table()` for [funkyheatmappy](https://github.com/funkyheatmap/funkyheatmappy) rendering (`pip install scdice-metrics[funkyheatmap]` or `pip install funkyheatmappy`); default is `style="plottable"`.
 
 | Mode | Description |
 |------|-------------|
