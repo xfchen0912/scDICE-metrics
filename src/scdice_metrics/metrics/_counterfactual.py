@@ -259,6 +259,241 @@ def systema_pearson_delta_metrics(
     return out
 
 
+def systema_reference_delta_metrics(
+    observed: Any,
+    predicted: Any,
+    reference: Any,
+    *,
+    template: Any | None = None,
+    top_k: int = 20,
+) -> dict[str, float]:
+    """Systema's PearsonΔ with the reference shifted by a shared response template.
+
+    Systema ("beyond systematic variation", Vinas Torne et al., *Nat. Biotechnol.* 2025)
+    recommends moving the reference from the control centroid to the **perturbed
+    centroid** `O_pert`, the average of the training perturbations' centroids. Subtracting
+    an additive shift ``template`` from ``reference`` is equivalent for the delta metric::
+
+        (X - (reference + template)) == (X - reference) - template
+
+    so the Pearson correlation is computed between
+    ``(Δ_true - template)`` and ``(Δ_pred - template)``, i.e. on the part of the response
+    that is *not* explained by the shared/systematic component.
+
+    ``template`` is a per-gene vector (e.g. the cross-context average response). When it is
+    ``None`` the metric degenerates to the plain control-referenced
+    :func:`systema_pearson_delta_metrics`.
+
+    Two top-k gene subsets are reported:
+
+    * ``top{k}_true_effect`` — selected by the *un-shifted* ``|Δ_true|``, matching
+      Systema's convention of reusing the control-vs-perturbed DE gene list.
+    * ``top{k}_specific_effect`` — selected by ``|Δ_true - template|``, i.e. by the
+      perturbation-*specific* effect. When a dataset is template-dominated (the shared
+      response dwarfs the context-specific part) the raw DE list is mostly template genes,
+      so the residual signal left after the reference shift is small and the first variant
+      can even go negative for a no-skill predictor. The specific-selection variant avoids
+      this and is the more informative one in that regime (see
+      ``scDICE-pipeline/docs/ood_kaleido_evaluation_findings.md`` §4.6.7).
+    """
+    if top_k < 1:
+        raise ValueError("top_k must be >= 1.")
+
+    obs = _mean_profile(observed, name="observed")
+    pred = _mean_profile(predicted, name="predicted")
+    ref = _mean_profile(reference, name="reference")
+    _validate_feature_dimensions(
+        (obs, "observed profile"),
+        (pred, "predicted profile"),
+        (ref, "reference profile"),
+    )
+
+    delta_true = obs - ref
+    k_eff = min(top_k, obs.size)
+
+    shifted_reference = ref
+    delta_specific = delta_true
+    if template is not None:
+        template_arr = np.asarray(template, dtype=float).ravel()
+        if template_arr.size != obs.size:
+            raise ValueError(
+                f"template has {template_arr.size} genes but the profiles have {obs.size}."
+            )
+        shifted_reference = ref + template_arr
+        delta_specific = delta_true - template_arr
+
+    top_raw = np.argsort(-np.abs(delta_true))[:k_eff]
+    top_specific = np.argsort(-np.abs(delta_specific))[:k_eff]
+
+    raw = pearson_delta_reference_metrics(obs, pred, shifted_reference, top20_de_idxs=top_raw)
+    specific = pearson_delta_reference_metrics(
+        obs, pred, shifted_reference, top20_de_idxs=top_specific
+    )
+    out = {"all_genes": float(raw["corr_all_allpert"])}
+    if "corr_20de_allpert" in raw:
+        out[f"top{top_k}_true_effect"] = float(raw["corr_20de_allpert"])
+        out[f"top{top_k}_specific_effect"] = float(specific["corr_20de_allpert"])
+    return out
+
+
+def _pseudobulk_log1p_profile(X: Any, *, name: str) -> np.ndarray:
+    """Aggregate a cell matrix to a profile the *same* way on every side.
+
+    The benchmark scores ``log1p(CPM)`` profiles, and the two sides of a comparison are
+    built differently: observations contribute one *sparse realisation* per cell
+    (``mean_i log1p(x_i)``), while a generative model contributes its *smooth expected
+    rate* (``log1p(mean_i x_i)``). Because ``log1p`` is concave those two differ by a
+    per-gene Jensen gap that can be several times larger than the condition effect
+    (see ``scDICE-pipeline/docs/ood_kaleido_evaluation_findings.md`` §4.3.1).
+
+    This helper removes that mismatch by applying one aggregation rule everywhere::
+
+        profile = log1p(mean_i expm1(x_i))
+
+    i.e. the per-gene mean of the per-cell (CPM) values, pushed back through ``log1p``.
+    One-dimensional inputs are treated as an already-aggregated profile and pass through
+    unchanged, so a method that emits a single mean profile keeps its own semantics.
+    """
+    if not hasattr(X, "shape"):
+        raise TypeError(f"{name} must be an array-like object with a shape attribute.")
+
+    shape = X.shape
+    if len(shape) == 1:
+        return _asarray_1d(np.asarray(X), name=name)
+    if len(shape) != 2:
+        raise ValueError(f"{name} must be one- or two-dimensional.")
+    if shape[0] == 0:
+        raise ValueError(f"{name} must not be empty.")
+
+    # the evaluation layer is log1p(CPM), so expm1() brings each cell back to CPM/1e4
+    if _is_sparse(X):
+        lin = np.expm1(np.asarray(X.toarray(), dtype=float))
+    else:
+        lin = np.expm1(np.asarray(X, dtype=float))
+    if not np.all(np.isfinite(lin)):
+        raise ValueError(f"{name} contains non-finite values.")
+
+    profile = np.log1p(lin.mean(axis=0))
+    profile = np.asarray(profile, dtype=float).ravel()
+    if profile.size == 0 or not np.all(np.isfinite(profile)):
+        raise ValueError(f"{name} produced an invalid profile.")
+    return profile
+
+
+def pseudobulk_log1p_delta_metrics(
+    observed: Any,
+    predicted: Any,
+    reference: Any,
+    *,
+    top_k: int = 20,
+) -> dict[str, float]:
+    """Effect metrics computed after a *consistent* aggregation of both sides.
+
+    ``observed`` / ``predicted`` / ``reference`` are aggregated with
+    :func:`_pseudobulk_log1p_profile` and the usual delta metrics are then evaluated on::
+
+        delta_true = pb(observed) - pb(reference)
+        delta_pred = pb(predicted) - pb(reference)
+
+    Equivalently: the reference cancels, so ``delta_rmse`` here is
+    ``‖pb(observed) - pb(predicted)‖`` — still reference-insensitive, as in the per-cell
+    convention (``docs/.../ood_kaleido_evaluation_findings.md`` §4.2). The correlation
+    metrics, in contrast, do carry direction information and are the ones to rank on.
+
+    Reported keys (flattened by the benchmarker to ``pseudobulk_log1p_delta_*``):
+    ``spearman`` (all genes), ``pearson`` (all genes), ``pearson_top{top_k}`` (genes
+    selected by ``|delta_true|``) and ``rmse``.
+    """
+    if top_k < 1:
+        raise ValueError("top_k must be >= 1.")
+
+    obs = _pseudobulk_log1p_profile(observed, name="observed")
+    pred = _pseudobulk_log1p_profile(predicted, name="predicted")
+    ref = _pseudobulk_log1p_profile(reference, name="reference")
+    _validate_feature_dimensions(
+        (obs, "observed profile"),
+        (pred, "predicted profile"),
+        (ref, "reference profile"),
+    )
+
+    delta_true = obs - ref
+    delta_pred = pred - ref
+    k_eff = min(top_k, obs.size)
+    top_idx = np.argsort(-np.abs(delta_true))[:k_eff]
+
+    return {
+        "spearman": _safe_spearman(delta_true, delta_pred),
+        "pearson": _safe_pearson(delta_true, delta_pred),
+        f"pearson_top{top_k}": _safe_pearson(delta_true[top_idx], delta_pred[top_idx]),
+        "rmse": float(np.sqrt(np.mean((delta_true - delta_pred) ** 2))),
+    }
+
+
+def pseudobulk_log1p_reference_delta_metrics(
+    observed: Any,
+    predicted: Any,
+    reference: Any,
+    *,
+    template: Any | None = None,
+    top_k: int = 20,
+) -> dict[str, float]:
+    """Systema-style reference, evaluated in the *consistent aggregation* space.
+
+    Same two ingredients as :func:`pseudobulk_log1p_delta_metrics` (both sides aggregated as
+    ``log1p(mean_i expm1(x_i))``) plus Systema's reference shift ``template`` (the shared
+    response of the *other* tasks). It is the missing cell of the 2x2: consistent aggregation
+    (no Jensen-gap mismatch) x perturbed-centroid reference (no systematic variation); see
+    ``scDICE-pipeline/docs/ood_kaleido_evaluation_findings.md`` §4.7.
+
+    Two top-k gene selections are reported, mirroring ``systema_reference_delta_metrics``:
+    ``top{k}_true_effect`` (by the un-shifted ``|delta_true|``) and ``top{k}_specific_effect``
+    (by ``|delta_true - template|``). ``rmse`` is reference-insensitive: the shifted reference
+    cancels, so it equals ``‖pb(observed) - pb(predicted)‖`` for every reference choice.
+    """
+    if top_k < 1:
+        raise ValueError("top_k must be >= 1.")
+
+    obs = _pseudobulk_log1p_profile(observed, name="observed")
+    pred = _pseudobulk_log1p_profile(predicted, name="predicted")
+    ref = _pseudobulk_log1p_profile(reference, name="reference")
+    _validate_feature_dimensions(
+        (obs, "observed profile"),
+        (pred, "predicted profile"),
+        (ref, "reference profile"),
+    )
+
+    # Gene selection follows Systema's convention: ``top{k}_true_effect`` reuses the
+    # *un-shifted* ``|delta_true|`` (their control-vs-perturbed DE list), while
+    # ``top{k}_specific_effect`` selects on the residual after the reference shift.
+    delta_raw = obs - ref
+    shifted_ref = ref
+    if template is not None:
+        template_arr = np.asarray(template, dtype=float).ravel()
+        if template_arr.size != obs.size:
+            raise ValueError(
+                f"template has {template_arr.size} genes but the profiles have {obs.size}."
+            )
+        if not np.all(np.isfinite(template_arr)):
+            raise ValueError("template contains non-finite values.")
+        shifted_ref = ref + template_arr
+
+    delta_true = obs - shifted_ref
+    delta_pred = pred - shifted_ref
+    k_eff = min(top_k, obs.size)
+    top_raw = np.argsort(-np.abs(delta_raw))[:k_eff]
+    top_spec = np.argsort(-np.abs(delta_true))[:k_eff]
+
+    return {
+        "spearman": _safe_spearman(delta_true, delta_pred),
+        "pearson": _safe_pearson(delta_true, delta_pred),
+        f"pearson_top{top_k}_true_effect": _safe_pearson(delta_true[top_raw], delta_pred[top_raw]),
+        f"pearson_top{top_k}_specific_effect": _safe_pearson(
+            delta_true[top_spec], delta_pred[top_spec]
+        ),
+        "rmse": float(np.sqrt(np.mean((obs - pred) ** 2))),
+    }
+
+
 def delta_pearson(
     observed: Any,
     predicted: Any,

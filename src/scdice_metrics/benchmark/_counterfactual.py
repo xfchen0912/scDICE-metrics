@@ -26,8 +26,11 @@ from scdice_metrics.metrics._counterfactual import (
     pseudobulk_pearson,
     pseudobulk_rmse,
     pseudobulk_spearman,
+    pseudobulk_log1p_delta_metrics,
+    pseudobulk_log1p_reference_delta_metrics,
     signed_de_recovery,
     systema_pearson_delta_metrics,
+    systema_reference_delta_metrics,
 )
 
 MetricType = bool | dict[str, Any]
@@ -35,12 +38,24 @@ MetricFn = Callable[..., float | dict[str, float]]
 
 REFERENCE_METRICS = {
     "systema_pearson_delta",
+    "systema_reference_delta",
     "delta_pearson",
     "delta_spearman",
     "delta_cosine",
     "delta_rmse",
     "delta_mae",
     "signed_de_recovery",
+    "pseudobulk_log1p_delta",
+    "pseudobulk_log1p_reference_delta",
+}
+
+#: Reference metrics that additionally require a per-task ``template`` (a per-gene
+#: reference shift). The value is the ``CounterfactualTask`` attribute to read it from, so
+#: the same task can carry a template measured in the per-cell space and one measured in the
+#: consistent-aggregation (pseudobulk) space.
+TEMPLATE_METRICS = {
+    "systema_reference_delta": "template",
+    "pseudobulk_log1p_reference_delta": "template_pseudobulk",
 }
 
 COUNTERFACTUAL_METRIC_INFO: dict[str, dict[str, Any]] = {
@@ -74,6 +89,13 @@ COUNTERFACTUAL_METRIC_INFO: dict[str, dict[str, Any]] = {
     },
     "systema_pearson_delta_all_genes": {
         "display_name": "Systema Pearson-delta (all genes)",
+        "group": "Effect fidelity",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "systema_reference_delta_all_genes": {
+        "display_name": "Systema reference Pearson-delta (template-removed)",
         "group": "Effect fidelity",
         "higher_is_better": True,
         "requires_reference": True,
@@ -154,6 +176,9 @@ METRIC_FUNCTIONS: dict[str, MetricFn] = {
     "pseudobulk_rmse": pseudobulk_rmse,
     "pseudobulk_mae": pseudobulk_mae,
     "systema_pearson_delta": systema_pearson_delta_metrics,
+    "systema_reference_delta": systema_reference_delta_metrics,
+    "pseudobulk_log1p_delta": pseudobulk_log1p_delta_metrics,
+    "pseudobulk_log1p_reference_delta": pseudobulk_log1p_reference_delta_metrics,
     "delta_pearson": delta_pearson,
     "delta_spearman": delta_spearman,
     "delta_cosine": delta_cosine,
@@ -176,6 +201,14 @@ class CounterfactualTask:
     reference: Any
     gene_names: Any | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    #: Optional per-gene reference shift for ``systema_reference_delta``: the average
+    #: response of the *training* items (Systema's perturbed-centroid template). ``None``
+    #: makes the template-removed metric degenerate to the plain control-referenced one.
+    template: Any | None = None
+    #: Same idea as ``template`` but measured in the consistent-aggregation space, for
+    #: ``pseudobulk_log1p_reference_delta`` (the two templates are *not* interchangeable:
+    #: one lives in ``mean_i log1p``, the other in ``log1p(mean_i)``).
+    template_pseudobulk: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -186,6 +219,9 @@ class Counterfactual:
     pseudobulk_mae: MetricType = False
 
     systema_pearson_delta: MetricType = field(default_factory=lambda: {"top_k": 20})
+    #: Reference shifted by ``CounterfactualTask.template`` (Systema's perturbed-centroid
+    #: reference). Off by default: it needs a per-task template to be supplied.
+    systema_reference_delta: MetricType = False
     delta_pearson: MetricType = False
     delta_spearman: MetricType = True
     delta_cosine: MetricType = False
@@ -193,6 +229,14 @@ class Counterfactual:
     delta_mae: MetricType = False
 
     signed_de_recovery: MetricType = field(default_factory=lambda: {"top_k": 50})
+
+    #: Effect metrics after aggregating both sides identically (``log1p(pseudobulk CPM)``).
+    #: Removes the Jensen-gap mismatch between ``mean_i log1p`` (observations) and
+    #: ``log1p(mean_i)`` (generative models). See docs §4.3.1.
+    pseudobulk_log1p_delta: MetricType = False
+    #: The same consistent aggregation with Systema's reference shift applied, i.e. the
+    #: ``log1p(pseudobulk) x perturbed-centroid`` cell of the 2x2 in docs §4.7.
+    pseudobulk_log1p_reference_delta: MetricType = False
 
     energy_distance: MetricType = True
     mmd_rbf: MetricType = False
@@ -242,6 +286,28 @@ def _validate_tasks(tasks: Sequence[CounterfactualTask]) -> None:
                 f"for task {task.task_id!r}."
             )
 
+        if task.template is not None:
+            template = np.asarray(task.template).ravel()
+            if template.size != n_genes:
+                raise ValueError(
+                    f"template length ({template.size}) does not match feature count ({n_genes}) "
+                    f"for task {task.task_id!r}."
+                )
+            if not np.all(np.isfinite(template)):
+                raise ValueError(f"template contains non-finite values for task {task.task_id!r}.")
+
+        if task.template_pseudobulk is not None:
+            template_pb = np.asarray(task.template_pseudobulk).ravel()
+            if template_pb.size != n_genes:
+                raise ValueError(
+                    f"template_pseudobulk length ({template_pb.size}) does not match feature "
+                    f"count ({n_genes}) for task {task.task_id!r}."
+                )
+            if not np.all(np.isfinite(template_pb)):
+                raise ValueError(
+                    f"template_pseudobulk contains non-finite values for task {task.task_id!r}."
+                )
+
 
 def _metric_kwargs(config: MetricType) -> dict[str, Any]:
     return dict(config) if isinstance(config, dict) else {}
@@ -258,9 +324,42 @@ def _iter_enabled_metrics(config: Counterfactual) -> list[tuple[str, dict[str, A
 def _metric_info(metric_key: str) -> dict[str, Any]:
     if metric_key in COUNTERFACTUAL_METRIC_INFO:
         return COUNTERFACTUAL_METRIC_INFO[metric_key]
+    if metric_key.startswith("pseudobulk_log1p_delta_"):
+        return {
+            "display_name": "Pseudobulk-log1p " + metric_key.removeprefix("pseudobulk_log1p_delta_").replace("_", " "),
+            "group": "Effect fidelity (consistent aggregation)",
+            "higher_is_better": not metric_key.endswith("_rmse"),
+            "requires_reference": True,
+            "supports_gene_indices": False,
+        }
+    if metric_key.startswith("pseudobulk_log1p_reference_delta_"):
+        return {
+            "display_name": "Pseudobulk-log1p reference "
+            + metric_key.removeprefix("pseudobulk_log1p_reference_delta_").replace("_", " "),
+            "group": "Effect fidelity (consistent aggregation, template-removed)",
+            "higher_is_better": not metric_key.endswith("_rmse"),
+            "requires_reference": True,
+            "supports_gene_indices": False,
+        }
     if metric_key.startswith("systema_pearson_delta_top") and metric_key.endswith("_true_effect"):
         return {
             "display_name": "Systema Pearson-delta (top-k true effect)",
+            "group": "Effect fidelity",
+            "higher_is_better": True,
+            "requires_reference": True,
+            "supports_gene_indices": False,
+        }
+    if metric_key.startswith("systema_reference_delta_top") and metric_key.endswith("_true_effect"):
+        return {
+            "display_name": "Systema reference Pearson-delta (template-removed, top-k true effect)",
+            "group": "Effect fidelity",
+            "higher_is_better": True,
+            "requires_reference": True,
+            "supports_gene_indices": False,
+        }
+    if metric_key.startswith("systema_reference_delta_top") and metric_key.endswith("_specific_effect"):
+        return {
+            "display_name": "Systema reference Pearson-delta (template-removed, top-k specific effect)",
             "group": "Effect fidelity",
             "higher_is_better": True,
             "requires_reference": True,
@@ -290,10 +389,37 @@ def _flatten_metric_outputs(metric_name: str, raw: float | dict[str, float], kwa
             "systema_pearson_delta_all_genes": float(raw["all_genes"]),
             f"systema_pearson_delta_top{top_k}_true_effect": float(raw[top_key]),
         }
+    if metric_name == "systema_reference_delta":
+        if not isinstance(raw, dict):
+            raise TypeError("systema_reference_delta_metrics must return a dictionary.")
+        top_k = int(kwargs.get("top_k", 20))
+        keys = ("true_effect", "specific_effect")
+        missing = [k for k in keys if f"top{top_k}_{k}" not in raw]
+        if missing:
+            raise KeyError(f"Missing {missing} in systema_reference_delta output.")
+        out = {
+            "systema_reference_delta_all_genes": float(raw["all_genes"]),
+        }
+        for key in keys:
+            out[f"systema_reference_delta_top{top_k}_{key}"] = float(raw[f"top{top_k}_{key}"])
+        return out
     if metric_name == "signed_de_recovery":
         if not isinstance(raw, dict):
             raise TypeError("signed_de_recovery must return a dictionary.")
         return {f"signed_de_recovery_{key}": float(value) for key, value in raw.items()}
+    if metric_name == "pseudobulk_log1p_delta":
+        if not isinstance(raw, dict):
+            raise TypeError("pseudobulk_log1p_delta_metrics must return a dictionary.")
+        return {f"pseudobulk_log1p_delta_{key}": float(value) for key, value in raw.items()}
+    if metric_name == "pseudobulk_log1p_reference_delta":
+        if not isinstance(raw, dict):
+            raise TypeError(
+                "pseudobulk_log1p_reference_delta_metrics must return a dictionary."
+            )
+        return {
+            f"pseudobulk_log1p_reference_delta_{key}": float(value)
+            for key, value in raw.items()
+        }
     if isinstance(raw, dict):
         return {str(key): float(value) for key, value in raw.items()}
     return {metric_name: float(raw)}
@@ -305,9 +431,15 @@ def _run_metric(
     predicted: Any,
     reference: Any,
     kwargs: dict[str, Any],
+    *,
+    task: CounterfactualTask | None = None,
 ) -> dict[str, float]:
     metric_fn = METRIC_FUNCTIONS[metric_name]
-    if metric_name in REFERENCE_METRICS:
+    if metric_name in TEMPLATE_METRICS:
+        template_field = TEMPLATE_METRICS[metric_name]
+        template = getattr(task, template_field, None) if task is not None else None
+        raw = metric_fn(observed, predicted, reference, template=template, **kwargs)
+    elif metric_name in REFERENCE_METRICS:
         raw = metric_fn(observed, predicted, reference, **kwargs)
     else:
         raw = metric_fn(observed, predicted, **kwargs)
@@ -372,6 +504,7 @@ class CounterfactualBenchmarker:
                         predicted,
                         task.reference,
                         metric_kwargs,
+                        task=task,
                     )
                     for metric_key, metric_value in values.items():
                         info = _metric_info(metric_key)
