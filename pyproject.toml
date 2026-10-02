@@ -140,7 +140,7 @@ extend-include = ["*.ipynb"]
 
 [tool.ruff.lint.per-file-ignores]
 "docs/*" = ["I", "BLE001", "E402", "B018"]
-"tests/*" = ["D", "B018"]
+"tests/**" = ["D", "B018"]
 "*/__init__.py" = ["F401"]
 "src/scdice_metrics/__init__.py" = ["I"]
 
