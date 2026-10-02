@@ -30,6 +30,25 @@ from scdice_metrics.benchmark import Benchmarker
     benchmark.Counterfactual
     benchmark.CounterfactualBenchmarker
     benchmark.DegProfile
+    benchmark.cross_method_ari
+    benchmark.summarize_consensus
+```
+
+SACCELERATOR-style spatial metrics (``SpatialClustering.saccelerator()``):
+
+```{eval-rst}
+.. autosummary::
+    :toctree: generated
+
+    spatial_ari
+    spatial_nmi
+    gt_mixture_entropy
+    domain_specific_f1
+    matched_mcc
+    matched_jaccard
+    calinski_harabasz
+    davies_bouldin
+    cluster_specific_silhouette
 ```
 
 CellSimBench-style metrics and calibration (also on ``Counterfactual`` / ``CounterfactualTask``):

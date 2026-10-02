@@ -6,7 +6,7 @@ from typing import Literal
 
 import pandas as pd
 
-BenchmarkMode = Literal["auto", "legacy", "scib", "sdmbench", "full"]
+BenchmarkMode = Literal["auto", "legacy", "scib", "sdmbench", "saccelerator", "full"]
 
 # Raw metric keys as stored in Benchmarker._results (before clean_names).
 BIO_CONSERVATION_METRICS = (
@@ -44,9 +44,25 @@ DISENTANGLEMENT_METRICS = (
 )
 SPATIAL_ACCURACY_METRICS = ("hom", "com")
 SPATIAL_CONTINUITY_METRICS = ("chaos", "pas")
+SPATIAL_SACCELERATOR_ACCURACY_METRICS = (
+    "hom",
+    "com",
+    "spatial_ari",
+    "spatial_nmi",
+    "domain_specific_f1_macro",
+    "matched_mcc",
+    "matched_jaccard",
+)
+SPATIAL_PURITY_METRICS = ("gt_mixture_entropy",)
 
 # Metrics where smaller raw values indicate better performance.
-LOWER_IS_BETTER_METRICS = frozenset(SPATIAL_CONTINUITY_METRICS)
+LOWER_IS_BETTER_METRICS = frozenset(
+    {
+        *SPATIAL_CONTINUITY_METRICS,
+        "gt_mixture_entropy",
+        "davies_bouldin",
+    }
+)
 
 
 def orient_metrics_higher_is_better(
@@ -172,6 +188,26 @@ class BenchmarkTemplate:
         )
 
     @classmethod
+    def saccelerator(cls, weights: Mapping[str, float] | None = None) -> BenchmarkTemplate:
+        """SACCELERATOR-style template: spatial Accuracy + Continuity + Purity."""
+        default_weights = {"Accuracy": 0.4, "Continuity": 0.35, "Purity": 0.25}
+        merged = default_weights if weights is None else {**default_weights, **dict(weights)}
+        return cls(
+            name="saccelerator",
+            groups={
+                "Accuracy": SPATIAL_SACCELERATOR_ACCURACY_METRICS,
+                "Continuity": SPATIAL_CONTINUITY_METRICS,
+                "Purity": SPATIAL_PURITY_METRICS,
+            },
+            weights=merged,
+            parent_groups={
+                "Accuracy": "Spatial clustering",
+                "Continuity": "Spatial clustering",
+                "Purity": "Spatial clustering",
+            },
+        )
+
+    @classmethod
     def full(cls, weights: Mapping[str, float] | None = None) -> BenchmarkTemplate:
         """Combined template for integration + spatial + disentanglement benchmarks."""
         default_weights = {
@@ -209,6 +245,8 @@ class BenchmarkTemplate:
             return cls.scib()
         if mode == "sdmbench":
             return cls.sdmbench()
+        if mode == "saccelerator":
+            return cls.saccelerator()
         if mode == "full":
             return cls.full()
         if mode == "auto":

@@ -11,6 +11,12 @@ from ._plot_tables import (
     combine_benchmark_results_for_funkyheatmap,
     plot_funkyheatmap_multi_dataset_table,
 )
+from ._consensus import (
+    cross_method_ari,
+    cross_method_entropy,
+    smoothness_entropy,
+    summarize_consensus,
+)
 from ._templates import BenchmarkMode, BenchmarkTemplate, infer_template
 
 __all__ = [
@@ -34,4 +40,8 @@ __all__ = [
     "DegProfile",
     "combine_benchmark_results_for_funkyheatmap",
     "plot_funkyheatmap_multi_dataset_table",
+    "cross_method_ari",
+    "smoothness_entropy",
+    "cross_method_entropy",
+    "summarize_consensus",
 ]

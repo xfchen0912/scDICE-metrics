@@ -22,7 +22,14 @@ Implementations use [JAX](https://jax.readthedocs.io/en/latest/) where possible 
 
 ## Key Features & Metrics
 
-Metric families can be run individually via the direct API or composed in the `Benchmarker` pipeline. See [Metric references](#metric-references) for primary citations.
+Metric families can be run individually via the direct API or composed in benchmark pipelines. There are **two main harnesses**:
+
+| Harness | Use case | Entry point |
+|---------|----------|---------------|
+| **`Benchmarker`** | Batch integration, disentanglement, **spatial domain** clustering on embeddings | `SpatialClustering`, `display_template="sdmbench"` / `"saccelerator"` |
+| **`CounterfactualBenchmarker`** | **OOD perturbation** prediction (cell-type-specific condition / niche swap) | `Counterfactual`, `CounterfactualTask`, optional `Counterfactual.cellsimbench()` |
+
+See [Metric references](#metric-references) for primary citations.
 
 ### Disentanglement metrics
 
@@ -43,13 +50,24 @@ Based on the scIB atlas-integration benchmark ([Luecken et al., 2022][ref-scib])
 
 ### Spatial clustering metrics
 
-Spatial-domain accuracy and continuity metrics follow the [SDMBench][ref-sdmbench-repo] protocol ([Yuan et al., 2024][ref-sdmbench]):
+Spatial-domain metrics follow the [SDMBench][ref-sdmbench-repo] protocol ([Yuan et al., 2024][ref-sdmbench]) and can be extended with optional [SACCELERATOR](https://github.com/saezlab/SACCELERATOR)-style scores (pure Python; no Snakemake/conda plugins).
 
-- **Accuracy**: `hom`, `com` (homogeneity / completeness; [Rosenberg & Hirschberg, 2007][ref-vmeasure])
-- **Continuity**: `chaos`, `pas` (lower is better); `pas_from_neighbors` reuses a precomputed spatial kNN graph
-- **Auto-clustering** (when predicted domain labels are missing): per-embedding Leiden or k-means via `SpatialClusteringPrepare` / `Benchmarker.prepare_spatial_clusters()`, with helpers `spatial_cluster_labels_leiden`, `spatial_cluster_labels_kmeans`, and `spatial_cluster_labels_from_spatial_coords`
+**SDMBench core** (via `SpatialClustering` on `Benchmarker`):
 
-`SpatialClustering` defaults to `chaos=True` and `pas=True`; set `hom=True` / `com=True` when ground-truth spatial domains are available in `spatial_label_key`.
+- **Accuracy** (needs `spatial_label_key`): `hom`, `com` ([Rosenberg & Hirschberg, 2007][ref-vmeasure])
+- **Continuity** (lower is better): `chaos`, `pas`; `pas_from_neighbors` reuses a precomputed spatial kNN graph
+- **Auto-clustering** when predicted labels are missing: `SpatialClusteringPrepare` / `prepare_spatial_clusters()`, plus `spatial_cluster_labels_leiden`, `spatial_cluster_labels_kmeans`, `spatial_cluster_labels_from_spatial_coords`
+
+`SpatialClustering` defaults to `chaos=True` and `pas=True`. Set `hom=True` / `com=True` when ground-truth spatial domains are in `spatial_label_key`.
+
+**SACCELERATOR extensions** (default off; factory `SpatialClustering.saccelerator()`):
+
+- **Supervised**: `spatial_ari`, `spatial_nmi`, `gt_mixture_entropy` (lower is better), `domain_specific_f1` (dict → `domain_specific_f1_<domain>` + `domain_specific_f1_macro`), `matched_mcc`, `matched_jaccard`
+- **Unsupervised on embedding** (`ad.X` in the benchmark sub-AnnData): `calinski_harabasz`, `davies_bouldin`, `cluster_specific_silhouette` (per-cluster dict + `macro`)
+- **SpatialARI (external)**: `spatial_external_ari` — placeholder returning NaN until an optional backend is wired
+- **Multi-method consensus** (not part of the default `benchmark()` loop): `cross_method_ari`, `smoothness_entropy`, `cross_method_entropy`, `summarize_consensus` in `scdice_metrics.benchmark` (wide label table + coordinates)
+
+Use `display_template="saccelerator"` for grouped **Accuracy** / **Continuity** / **Purity** (`gt_mixture_entropy`). Spatial-domain ARI/NMI use `spatial_ari` / `spatial_nmi` against `spatial_label_key`, not bio-conservation `nmi_ari_cluster_labels_*` (those compare clusters to **cell type**).
 
 `SpatialClusteringPrepare` controls auto-clustering:
 
@@ -71,11 +89,12 @@ Spatial-domain accuracy and continuity metrics follow the [SDMBench][ref-sdmbenc
 | `"auto"` (default) | Infer groups from enabled metric collections |
 | `"scib"` | Bio conservation + Batch correction (0.6 / 0.4) |
 | `"sdmbench"` | Spatial Accuracy (`hom`, `com`) + Continuity (`chaos`, `pas`) |
+| `"saccelerator"` | Spatial Accuracy (incl. `spatial_ari`, `domain_specific_f1_macro`) + Continuity + Purity (`gt_mixture_entropy`) |
 | `"full"` | Combined integration + spatial + disentanglement weights |
 | `"legacy"` | One display group per enabled collection |
 | `BenchmarkTemplate(...)` | Custom groups, weights, and lower-is-better metrics |
 
-Factory helpers: `BenchmarkTemplate.scib()`, `.sdmbench()`, `.full()`, `.legacy_from_collections()`, and `infer_template()`.
+Factory helpers: `BenchmarkTemplate.scib()`, `.sdmbench()`, `.saccelerator()`, `.full()`, `.legacy_from_collections()`, and `infer_template()`. Metric collection presets: `SpatialClustering.saccelerator()`, `Counterfactual.cellsimbench()`.
 
 ### Perturbation response metrics *(direct API only)*
 
@@ -94,6 +113,17 @@ Cell-type-specific swap benchmarks evaluate how well models recover held-out con
 - **DE recovery**: `signed_de_recovery`
 - **Distribution**: `energy_distance`, `mmd_rbf`, `mean_gene_wasserstein`
 
+### CellSimBench-style perturbation metrics *(optional on `CounterfactualBenchmarker`)*
+
+Aligned with perturbation-model calibration benchmarks (dual baselines, DEG-weighted scores, DRF). Enable via `Counterfactual.cellsimbench()` or per-metric flags on `Counterfactual` (defaults unchanged).
+
+- **Task fields**: optional `dataset_mean` (fold-specific mean profile for `*deltapert*`), `deg` (`DegProfile` with GT-half weights and top-100-by-p mask), `metadata["covariate"]` for panel metrics
+- **Baselines as methods**: put `dataset_mean`, `control`, `technical_duplicate`, `interpolated_duplicate` in `CounterfactualTask.predicted` for DRF
+- **Dual delta**: `pearson_deltactrl` / `pearson_deltapert`, `r2_deltactrl` / `r2_deltapert`, `weighted_r2_*`, DEG top-100 variants (`*_degs`) — distinct from Systema `signed_de_recovery` top-k definitions
+- **DEG-weighted expression**: `wmse`, `wmae`, `mse_degs`, `mae_degs`
+- **Panel metrics** (second benchmark pass, per method): `nir`, `pds`, `knn_jaccard_deltapert` (disabled metrics omit rows; no `0.0` placeholders)
+- **Calibration** (post-hoc on long DataFrame): `dynamic_range_fraction`, `score_relative_to_baselines`, `drf_all_versions`
+
 Systema top-k true-effect genes and signed-DE top-k sets are **evaluation-only** oracle subsets derived from held-out observed-vs-source effects. Do not use them for training or model selection.
 
 ### Planned *(not yet implemented)*
@@ -106,8 +136,8 @@ Systema top-k true-effect genes and signed-DE top-k sets are **evaluation-only**
 
 ```
 scdice_metrics/
-├── benchmark/          # Benchmarker pipeline, swap tasks, counterfactual benchmarker
-├── metrics/            # Individual metric functions
+├── benchmark/          # Benchmarker, CounterfactualBenchmarker, swap tasks, consensus helpers
+├── metrics/            # Metric functions (integration, spatial, counterfactual, CellSimBench, …)
 ├── nearest_neighbors/  # pynndescent, jax_approx_min_k, rapids
 ├── utils/              # PCA, k-means, LISI helpers, etc.
 └── _settings.py        # ScibConfig (verbosity, progress bar style)
@@ -182,6 +212,11 @@ hom = sm.hom(adata.obs["domain_truth"], pred)
 com = sm.com(adata.obs["domain_truth"], pred)
 chaos = sm.chaos(pred, adata.obsm["spatial"])
 pas = sm.pas(pred, adata.obsm["spatial"], k=10)
+
+# Optional SACCELERATOR-style supervised scores (spatial GT vs predicted domains)
+sm.spatial_ari(adata.obs["domain_truth"], pred)
+sm.gt_mixture_entropy(adata.obs["domain_truth"], pred)  # lower is better
+sm.domain_specific_f1(adata.obs["domain_truth"], pred)  # dict with "macro" and per-domain keys
 ```
 
 ### Direct metric API — perturbation response
@@ -244,6 +279,34 @@ bm = Benchmarker(
 bm.benchmark()
 results = bm.get_results(display_template="sdmbench")
 bm.plot_results_table(display_template="sdmbench", min_max_scale=False)
+```
+
+SACCELERATOR-style preset (supervised + continuity; requires `spatial_label_key`):
+
+```python
+bm = Benchmarker(
+    adata=adata,
+    batch_key="batch",
+    label_key="cell_type",
+    spatial_label_key="domain_truth",
+    spatial_obsm_key="spatial",
+    embedding_obsm_keys=["X_scDICE"],
+    bio_conservation_metrics=None,
+    batch_correction_metrics=None,
+    spatial_clustering_metrics=SpatialClustering.saccelerator(),
+)
+bm.benchmark()
+results = bm.get_results(display_template="saccelerator")
+```
+
+Multi-method label consensus (separate from `Benchmarker.benchmark()`):
+
+```python
+import pandas as pd
+from scdice_metrics.benchmark import cross_method_ari, summarize_consensus
+
+labels_wide = pd.DataFrame({"MethodA": ..., "MethodB": ...}, index=adata.obs_names)
+summarize_consensus(labels_wide, spatial=adata.obsm["spatial"], k_neighbors=6)
 ```
 
 `Benchmarker` organizes metrics into **Bio conservation**, **Batch correction**, **Disentanglement**, and **Spatial clustering**. When more than one family is enabled, aggregate scores are computed from the resolved display template. For disentanglement runs, `disentanglement_factor_keys` are read from `adata.obs`, and `leakage_target_key` is required only when `fairness_leakage=True`.
@@ -328,6 +391,39 @@ summary = bm.get_swap_summary()  # partitions by swap_type and match_other_facto
 by_cell_type = bm.get_swap_summary(by_cell_type=True)
 ```
 
+CellSimBench-style preset (pseudobulk / dual-delta; extend tasks with `dataset_mean` and `DegProfile`):
+
+```python
+from scdice_metrics.benchmark import DegProfile
+from scdice_metrics.metrics import (
+    deg_mask_from_pvals,
+    deg_weights_from_scores,
+    drf_all_versions,
+)
+
+deg = DegProfile(
+    weights=deg_weights_from_scores(gene_names, scores, score_genes),
+    top_mask=deg_mask_from_pvals(gene_names, pvals, pval_genes, topn=100),
+    source="gt_half",
+)
+
+profile_tasks.append(
+    CounterfactualTask(
+        task_id=spec.task_id,
+        observed=...,
+        predicted={"MyMethod": ..., "dataset_mean": ..., "control": ..., "technical_duplicate": ...},
+        reference=control_profile,
+        dataset_mean=fold_mean_profile,
+        deg=deg,
+        metadata={**spec.metadata, "covariate": "donor1"},
+    )
+)
+
+bm = CounterfactualBenchmarker(tasks=profile_tasks, counterfactual_metrics=Counterfactual.cellsimbench())
+bm.benchmark()
+drf = drf_all_versions(bm.get_results(long_format=True))
+```
+
 **Notes**
 
 - Provide a common normalization/representation for every method before constructing tasks.
@@ -348,12 +444,22 @@ sm.energy_distance(observed, predicted)
 
 ## Development
 
+From the package root:
+
 ```bash
 pip install -e ".[test,dev]"
 pytest tests/ -v
 ```
 
-Configure logging and progress bars via `scdice_metrics.settings` (`ScibConfig`).
+In the SpaPert monorepo, the factory pixi environment can run the same suite:
+
+```bash
+cd SpaPert-model_factory
+pixi run pytest ../scDICE-metrics/tests/benchmark/test_spatial_saccelerator_benchmarker.py -v
+pixi run pytest ../scDICE-metrics/tests/counterfactual/ ../scDICE-metrics/tests/benchmark/test_cellsimbench_protocol.py -v
+```
+
+See [tests/README.md](tests/README.md) for layout. Configure logging and progress bars via `scdice_metrics.settings` (`ScibConfig`).
 
 ## Release notes
 
@@ -378,6 +484,10 @@ If you found a bug, please use the [issue tracker][issue-tracker].
 | Mixed-KSG MI / MIG | [Kraskov et al., *Phys. Rev. E* 2004][ref-ksg] |
 | Fairness leakage | [Bird et al., 2020][ref-fairlearn] via [Fairlearn](https://fairlearn.org/) |
 | Perturbation metrics | [Vinas Torne et al., *Nat. Biotechnol.* 2025][ref-systema] |
+| SACCELERATOR spatial extensions | [SACCELERATOR][ref-saccelerator] (Nature Methods 2026); HOM/COM/CHAOS/PAS overlap SDMBench |
+| CellSimBench-style calibration | Perturbation-model benchmark literature (dual baseline, DRF); metric names match common CellSimBench tables |
+
+[ref-saccelerator]: https://github.com/saezlab/SACCELERATOR
 
 ## Citation
 

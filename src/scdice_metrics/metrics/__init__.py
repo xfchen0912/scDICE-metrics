@@ -73,6 +73,22 @@ from ._spatial_clustering import (
     spatial_cluster_labels_kmeans,
     spatial_cluster_labels_leiden,
 )
+from ._spatial_supervised import (
+    domain_specific_f1,
+    gt_mixture_entropy,
+    match_predicted_to_ground_truth,
+    matched_jaccard,
+    matched_mcc,
+    spatial_ari,
+    spatial_external_ari,
+    spatial_nmi,
+)
+from ._spatial_unsupervised import (
+    calinski_harabasz,
+    cluster_specific_silhouette,
+    davies_bouldin,
+)
+
 __all__ = [
     "isolated_labels",
     "pcr_comparison",
@@ -125,6 +141,17 @@ __all__ = [
     "spatial_cluster_labels_kmeans",
     "spatial_cluster_labels_leiden",
     "spatial_cluster_labels_from_spatial_coords",
+    "spatial_ari",
+    "spatial_nmi",
+    "gt_mixture_entropy",
+    "domain_specific_f1",
+    "matched_mcc",
+    "matched_jaccard",
+    "match_predicted_to_ground_truth",
+    "spatial_external_ari",
+    "calinski_harabasz",
+    "davies_bouldin",
+    "cluster_specific_silhouette",
     "DegProfile",
     "deg_weights_from_scores",
     "deg_mask_from_pvals",

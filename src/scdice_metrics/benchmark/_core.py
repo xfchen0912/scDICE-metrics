@@ -85,6 +85,16 @@ metric_name_cleaner = {
     "com": "COM",
     "chaos": "CHAOS",
     "pas": "PAS",
+    "spatial_ari": "Spatial ARI",
+    "spatial_nmi": "Spatial NMI",
+    "gt_mixture_entropy": "GT mixture entropy",
+    "domain_specific_f1_macro": "Domain F1 (macro)",
+    "matched_mcc": "Matched MCC",
+    "matched_jaccard": "Matched Jaccard",
+    "calinski_harabasz": "Calinski-Harabasz",
+    "davies_bouldin": "Davies-Bouldin",
+    "cluster_specific_silhouette_macro": "Cluster silhouette (macro)",
+    "spatial_external_ari": "SpatialARI (external)",
 }
 
 
@@ -148,6 +158,35 @@ class SpatialClustering:
     com: MetricType = False
     chaos: MetricType = True
     pas: MetricType = True
+    spatial_ari: MetricType = False
+    spatial_nmi: MetricType = False
+    gt_mixture_entropy: MetricType = False
+    domain_specific_f1: MetricType = False
+    matched_mcc: MetricType = False
+    matched_jaccard: MetricType = False
+    calinski_harabasz: MetricType = False
+    davies_bouldin: MetricType = False
+    cluster_specific_silhouette: MetricType = False
+    spatial_external_ari: MetricType = False
+
+    @classmethod
+    def saccelerator(cls) -> "SpatialClustering":
+        """Enable SACCELERATOR-style spatial metric subset (requires spatial domain GT for supervised scores)."""
+        return cls(
+            hom=True,
+            com=True,
+            chaos=True,
+            pas=True,
+            spatial_ari=True,
+            spatial_nmi=True,
+            gt_mixture_entropy=True,
+            domain_specific_f1=True,
+            matched_mcc=True,
+            matched_jaccard=True,
+            calinski_harabasz=True,
+            davies_bouldin=True,
+            cluster_specific_silhouette=True,
+        )
 
 
 def _get_pas_k(spatial_clustering_metrics: SpatialClustering | None) -> int:
@@ -200,6 +239,18 @@ class MetricAnnDataAPI(Enum):
     fairness_leakage = lambda ad, fn: fn(ad.X, ad.uns[_DISENTANGLEMENT_FACTORS], ad.obs[_LEAKAGE_TARGET])
     hom = lambda ad, fn: fn(ad.obs[_SPATIAL_LABELS], ad.obs[_SPATIAL_CLUSTER])
     com = lambda ad, fn: fn(ad.obs[_SPATIAL_LABELS], ad.obs[_SPATIAL_CLUSTER])
+    spatial_ari = lambda ad, fn: fn(ad.obs[_SPATIAL_LABELS], ad.obs[_SPATIAL_CLUSTER])
+    spatial_nmi = lambda ad, fn: fn(ad.obs[_SPATIAL_LABELS], ad.obs[_SPATIAL_CLUSTER])
+    gt_mixture_entropy = lambda ad, fn: fn(ad.obs[_SPATIAL_LABELS], ad.obs[_SPATIAL_CLUSTER])
+    domain_specific_f1 = lambda ad, fn: fn(ad.obs[_SPATIAL_LABELS], ad.obs[_SPATIAL_CLUSTER])
+    matched_mcc = lambda ad, fn: fn(ad.obs[_SPATIAL_LABELS], ad.obs[_SPATIAL_CLUSTER])
+    matched_jaccard = lambda ad, fn: fn(ad.obs[_SPATIAL_LABELS], ad.obs[_SPATIAL_CLUSTER])
+    calinski_harabasz = lambda ad, fn: fn(ad.obs[_SPATIAL_CLUSTER], ad.X)
+    davies_bouldin = lambda ad, fn: fn(ad.obs[_SPATIAL_CLUSTER], ad.X)
+    cluster_specific_silhouette = lambda ad, fn: fn(ad.obs[_SPATIAL_CLUSTER], ad.X)
+    spatial_external_ari = lambda ad, fn: fn(
+        ad.obs[_SPATIAL_LABELS], ad.obs[_SPATIAL_CLUSTER], ad.obsm[_SPATIAL_COORDS]
+    )
     chaos = _call_metric_chaos
     pas = _call_metric_pas
 
@@ -267,8 +318,9 @@ class Benchmarker:
         How to group metrics for aggregation and :meth:`plot_results_table`. Use
         ``"auto"`` (default) to infer from enabled collections, ``"scib"`` for
         Bio conservation + Batch correction, ``"sdmbench"`` for spatial
-        Accuracy + Continuity, ``"full"`` for all groups, ``"legacy"`` for one
-        group per metric collection, or a custom :class:`BenchmarkTemplate`.
+        Accuracy + Continuity, ``"saccelerator"`` for SACCELERATOR-style spatial
+        groups, ``"full"`` for all groups, ``"legacy"`` for one group per metric
+        collection, or a custom :class:`BenchmarkTemplate`.
 
     Notes
     -----

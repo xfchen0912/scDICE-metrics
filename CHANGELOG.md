@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning][].
 
 ### Added
 
+- SACCELERATOR-style spatial metrics (`spatial_ari`, `domain_specific_f1`, `gt_mixture_entropy`, matched MCC/Jaccard, embedding CH/DB/silhouette) and `SpatialClustering.saccelerator()`.
+- Consensus helpers (`cross_method_ari`, `smoothness_entropy`, `summarize_consensus`) for multi-method label tables.
 - CellSimBench-style counterfactual metrics (`pearson_deltapert`, `weighted_r2_deltapert`, DEG-weighted WMSE, NIR/PDS/KNN-Jaccard panel pass).
 - `CounterfactualTask.dataset_mean`, `CounterfactualTask.deg`, and `Counterfactual.cellsimbench()` factory.
 - DRF calibration utilities (`dynamic_range_fraction`, `score_relative_to_baselines`, `drf_all_versions`).
