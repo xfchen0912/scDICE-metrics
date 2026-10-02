@@ -29,6 +29,22 @@ from scdice_metrics.benchmark import Benchmarker
     benchmark.CounterfactualTask
     benchmark.Counterfactual
     benchmark.CounterfactualBenchmarker
+    benchmark.DegProfile
+```
+
+CellSimBench-style metrics and calibration (also on ``Counterfactual`` / ``CounterfactualTask``):
+
+```{eval-rst}
+.. autosummary::
+    :toctree: generated
+
+    DegProfile
+    pearson_deltactrl
+    pearson_deltapert
+    weighted_r2_deltapert
+    dynamic_range_fraction
+    score_relative_to_baselines
+    drf_all_versions
 ```
 
 Spatial clustering helpers (also importable from ``scdice_metrics``):

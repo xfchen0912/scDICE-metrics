@@ -1,4 +1,5 @@
 from ._counterfactual import Counterfactual, CounterfactualBenchmarker, CounterfactualTask
+from scdice_metrics.metrics._cellsimbench import DegProfile
 from ._core import BatchCorrection, Benchmarker, BioConservation, Disentanglement, SpatialClustering
 from ._spatial_prepare import (
     SpatialClusteringPrepare,
@@ -30,6 +31,7 @@ __all__ = [
     "Counterfactual",
     "CounterfactualBenchmarker",
     "CounterfactualTask",
+    "DegProfile",
     "combine_benchmark_results_for_funkyheatmap",
     "plot_funkyheatmap_multi_dataset_table",
 ]

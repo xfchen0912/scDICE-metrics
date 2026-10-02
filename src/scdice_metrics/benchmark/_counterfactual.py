@@ -11,7 +11,28 @@ import numpy as np
 import pandas as pd
 
 from scdice_metrics.benchmark._progress import iter_progress, print_status
+from scdice_metrics.metrics._cellsimbench import (
+    DegProfile,
+    knn_jaccard_deltapert,
+    mae_degs,
+    mse_degs,
+    nir_scores,
+    pds_scores,
+    pearson_deltactrl,
+    pearson_deltactrl_degs,
+    pearson_deltapert,
+    pearson_deltapert_degs,
+    r2_deltactrl,
+    r2_deltactrl_degs,
+    r2_deltapert,
+    r2_deltapert_degs,
+    weighted_r2_deltactrl,
+    weighted_r2_deltapert,
+    wmae,
+    wmse,
+)
 from scdice_metrics.metrics._counterfactual import (
+    _mean_profile,
     _n_features,
     _validate_feature_dimensions,
     delta_cosine,
@@ -47,7 +68,42 @@ REFERENCE_METRICS = {
     "signed_de_recovery",
     "pseudobulk_log1p_delta",
     "pseudobulk_log1p_reference_delta",
+    "pearson_deltactrl",
+    "pearson_deltactrl_degs",
+    "pearson_deltapert",
+    "pearson_deltapert_degs",
+    "r2_deltactrl",
+    "r2_deltactrl_degs",
+    "r2_deltapert",
+    "r2_deltapert_degs",
+    "weighted_r2_deltactrl",
+    "weighted_r2_deltapert",
+    "mse_degs",
+    "mae_degs",
+    "wmse",
+    "wmae",
 }
+
+PANEL_METRICS = frozenset({"nir", "pds", "knn_jaccard_deltapert"})
+
+CELLSIMBENCH_TASK_KWARGS_METRICS = frozenset(
+    {
+        "pearson_deltactrl",
+        "pearson_deltactrl_degs",
+        "pearson_deltapert",
+        "pearson_deltapert_degs",
+        "r2_deltactrl",
+        "r2_deltactrl_degs",
+        "r2_deltapert",
+        "r2_deltapert_degs",
+        "weighted_r2_deltactrl",
+        "weighted_r2_deltapert",
+        "mse_degs",
+        "mae_degs",
+        "wmse",
+        "wmae",
+    }
+)
 
 #: Reference metrics that additionally require a per-task ``template`` (a per-gene
 #: reference shift). The value is the ``CounterfactualTask`` attribute to read it from, so
@@ -157,6 +213,125 @@ COUNTERFACTUAL_METRIC_INFO: dict[str, dict[str, Any]] = {
         "requires_reference": False,
         "supports_gene_indices": True,
     },
+    "pearson_deltactrl": {
+        "display_name": "Pearson (Δ Ctrl)",
+        "group": "CellSimBench effect",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "pearson_deltactrl_degs": {
+        "display_name": "Pearson (Δ Ctrl DEG top-100)",
+        "group": "CellSimBench effect",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "pearson_deltapert": {
+        "display_name": "Pearson (Δ Pert)",
+        "group": "CellSimBench effect",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "pearson_deltapert_degs": {
+        "display_name": "Pearson (Δ Pert DEG top-100)",
+        "group": "CellSimBench effect",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "r2_deltactrl": {
+        "display_name": "R² (Δ Ctrl)",
+        "group": "CellSimBench effect",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "r2_deltactrl_degs": {
+        "display_name": "R² (Δ Ctrl DEG top-100)",
+        "group": "CellSimBench effect",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "r2_deltapert": {
+        "display_name": "R² (Δ Pert)",
+        "group": "CellSimBench effect",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "r2_deltapert_degs": {
+        "display_name": "R² (Δ Pert DEG top-100)",
+        "group": "CellSimBench effect",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "weighted_r2_deltactrl": {
+        "display_name": "Weighted R² (Δ Ctrl)",
+        "group": "CellSimBench effect",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "weighted_r2_deltapert": {
+        "display_name": "Weighted R² (Δ Pert)",
+        "group": "CellSimBench effect",
+        "higher_is_better": True,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "mse_degs": {
+        "display_name": "MSE (DEG top-100)",
+        "group": "CellSimBench expression",
+        "higher_is_better": False,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "mae_degs": {
+        "display_name": "MAE (DEG top-100)",
+        "group": "CellSimBench expression",
+        "higher_is_better": False,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "wmse": {
+        "display_name": "WMSE",
+        "group": "CellSimBench expression",
+        "higher_is_better": False,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "wmae": {
+        "display_name": "WMAE",
+        "group": "CellSimBench expression",
+        "higher_is_better": False,
+        "requires_reference": True,
+        "supports_gene_indices": False,
+    },
+    "nir": {
+        "display_name": "NIR",
+        "group": "CellSimBench identity",
+        "higher_is_better": True,
+        "requires_reference": False,
+        "supports_gene_indices": False,
+    },
+    "pds": {
+        "display_name": "PDS",
+        "group": "CellSimBench identity",
+        "higher_is_better": True,
+        "requires_reference": False,
+        "supports_gene_indices": False,
+    },
+    "knn_jaccard_deltapert": {
+        "display_name": "KNN Jaccard (Δ Pert)",
+        "group": "CellSimBench manifold",
+        "higher_is_better": True,
+        "requires_reference": False,
+        "supports_gene_indices": False,
+    },
 }
 
 SIGNED_DE_DISPLAY = {
@@ -188,6 +363,20 @@ METRIC_FUNCTIONS: dict[str, MetricFn] = {
     "energy_distance": energy_distance,
     "mmd_rbf": mmd_rbf,
     "mean_gene_wasserstein": mean_gene_wasserstein,
+    "pearson_deltactrl": pearson_deltactrl,
+    "pearson_deltactrl_degs": pearson_deltactrl_degs,
+    "pearson_deltapert": pearson_deltapert,
+    "pearson_deltapert_degs": pearson_deltapert_degs,
+    "r2_deltactrl": r2_deltactrl,
+    "r2_deltactrl_degs": r2_deltactrl_degs,
+    "r2_deltapert": r2_deltapert,
+    "r2_deltapert_degs": r2_deltapert_degs,
+    "weighted_r2_deltactrl": weighted_r2_deltactrl,
+    "weighted_r2_deltapert": weighted_r2_deltapert,
+    "mse_degs": mse_degs,
+    "mae_degs": mae_degs,
+    "wmse": wmse,
+    "wmae": wmae,
 }
 
 PARTITION_COLUMNS = ["swap_type", "match_other_factor"]
@@ -209,6 +398,10 @@ class CounterfactualTask:
     #: ``pseudobulk_log1p_reference_delta`` (the two templates are *not* interchangeable:
     #: one lives in ``mean_i log1p``, the other in ``log1p(mean_i)``).
     template_pseudobulk: Any | None = None
+    #: Fold-specific dataset mean profile for CellSimBench ``deltapert`` metrics.
+    dataset_mean: Any | None = None
+    #: GT-half DEG weights and top-gene mask aligned to evaluation genes.
+    deg: DegProfile | None = None
 
 
 @dataclass(frozen=True)
@@ -241,6 +434,47 @@ class Counterfactual:
     energy_distance: MetricType = True
     mmd_rbf: MetricType = False
     mean_gene_wasserstein: MetricType = False
+
+    pearson_deltactrl: MetricType = False
+    pearson_deltactrl_degs: MetricType = False
+    pearson_deltapert: MetricType = False
+    pearson_deltapert_degs: MetricType = False
+    r2_deltactrl: MetricType = False
+    r2_deltactrl_degs: MetricType = False
+    r2_deltapert: MetricType = False
+    r2_deltapert_degs: MetricType = False
+    weighted_r2_deltactrl: MetricType = False
+    weighted_r2_deltapert: MetricType = False
+    mse_degs: MetricType = False
+    mae_degs: MetricType = False
+    wmse: MetricType = False
+    wmae: MetricType = False
+    nir: MetricType = False
+    pds: MetricType = False
+    knn_jaccard_deltapert: MetricType = field(default_factory=lambda: {"k": 20})
+
+    @classmethod
+    def cellsimbench(cls) -> Counterfactual:
+        """Enable the CellSimBench paper metric subset (swap/OOD tasks still use task fields)."""
+        return cls(
+            pseudobulk_pearson=False,
+            pseudobulk_rmse=False,
+            pseudobulk_mae=False,
+            systema_pearson_delta=False,
+            delta_spearman=False,
+            delta_rmse=False,
+            delta_mae=False,
+            signed_de_recovery=False,
+            energy_distance=False,
+            pearson_deltactrl=True,
+            pearson_deltapert=True,
+            r2_deltactrl=True,
+            r2_deltapert=True,
+            weighted_r2_deltactrl=True,
+            weighted_r2_deltapert=True,
+            mse_degs=True,
+            wmse=True,
+        )
 
 
 def _n_units(X: Any) -> int:
@@ -306,6 +540,25 @@ def _validate_tasks(tasks: Sequence[CounterfactualTask]) -> None:
             if not np.all(np.isfinite(template_pb)):
                 raise ValueError(
                     f"template_pseudobulk contains non-finite values for task {task.task_id!r}."
+                )
+
+        if task.dataset_mean is not None:
+            _validate_feature_dimensions((task.dataset_mean, "dataset_mean"))
+            if _n_features(task.dataset_mean, name="dataset_mean") != n_genes:
+                raise ValueError(
+                    f"dataset_mean feature count does not match observed for task {task.task_id!r}."
+                )
+
+        if task.deg is not None:
+            deg = task.deg
+            if deg.weights.size != n_genes or deg.top_mask.size != n_genes:
+                raise ValueError(f"deg weights/mask length mismatch for task {task.task_id!r}.")
+            if task.deg.source == "predictor_half":
+                warnings.warn(
+                    f"Task {task.task_id!r} uses deg.source='predictor_half'; "
+                    "CellSimBench recommends GT-half DEGs for evaluation.",
+                    UserWarning,
+                    stacklevel=2,
                 )
 
 
@@ -425,6 +678,12 @@ def _flatten_metric_outputs(metric_name: str, raw: float | dict[str, float], kwa
     return {metric_name: float(raw)}
 
 
+def _cellsimbench_kwargs(task: CounterfactualTask | None) -> dict[str, Any]:
+    if task is None:
+        return {}
+    return {"dataset_mean": task.dataset_mean, "deg": task.deg}
+
+
 def _run_metric(
     metric_name: str,
     observed: Any,
@@ -435,15 +694,101 @@ def _run_metric(
     task: CounterfactualTask | None = None,
 ) -> dict[str, float]:
     metric_fn = METRIC_FUNCTIONS[metric_name]
+    cs_kwargs = _cellsimbench_kwargs(task) if metric_name in CELLSIMBENCH_TASK_KWARGS_METRICS else {}
     if metric_name in TEMPLATE_METRICS:
         template_field = TEMPLATE_METRICS[metric_name]
         template = getattr(task, template_field, None) if task is not None else None
-        raw = metric_fn(observed, predicted, reference, template=template, **kwargs)
+        raw = metric_fn(observed, predicted, reference, template=template, **cs_kwargs, **kwargs)
     elif metric_name in REFERENCE_METRICS:
-        raw = metric_fn(observed, predicted, reference, **kwargs)
+        raw = metric_fn(observed, predicted, reference, **cs_kwargs, **kwargs)
     else:
         raw = metric_fn(observed, predicted, **kwargs)
     return _flatten_metric_outputs(metric_name, raw, kwargs)
+
+
+def _covariate_groups(task_ids: Sequence[str], metadata_rows: Sequence[Mapping[str, Any]]) -> dict[str, list[str]]:
+    groups: dict[str, list[str]] = {}
+    for task_id, meta in zip(task_ids, metadata_rows, strict=True):
+        cov = meta.get("covariate", "_all")
+        groups.setdefault(str(cov), []).append(task_id)
+    return groups
+
+
+def _append_panel_metric_rows(
+    tasks: Sequence[CounterfactualTask],
+    enabled: dict[str, dict[str, Any]],
+    rows: list[dict[str, Any]],
+) -> None:
+    if not enabled:
+        return
+
+    methods: set[str] = set()
+    for task in tasks:
+        methods.update(task.predicted.keys())
+
+    for method in methods:
+        pred_profiles: dict[str, np.ndarray] = {}
+        truth_profiles: dict[str, np.ndarray] = {}
+        pred_deltamean: dict[str, np.ndarray] = {}
+        truth_deltamean: dict[str, np.ndarray] = {}
+        metadata_by_task: dict[str, dict[str, Any]] = {}
+
+        for task in tasks:
+            if method not in task.predicted:
+                continue
+            tid = task.task_id
+            metadata_by_task[tid] = _task_metadata_row(task)
+            truth_profiles[tid] = _mean_profile(task.observed, name="observed")
+            pred_profiles[tid] = _mean_profile(task.predicted[method], name="predicted")
+            if task.dataset_mean is not None:
+                mean = _mean_profile(task.dataset_mean, name="dataset_mean")
+                truth_deltamean[tid] = truth_profiles[tid] - mean
+                pred_deltamean[tid] = pred_profiles[tid] - mean
+
+        if len(pred_profiles) < 2:
+            continue
+
+        task_ids = list(pred_profiles.keys())
+        meta_rows = [metadata_by_task[tid] for tid in task_ids]
+        cov_groups = _covariate_groups(task_ids, meta_rows)
+
+        pred_df = pd.DataFrame.from_dict(pred_profiles, orient="index")
+        truth_df = pd.DataFrame.from_dict(truth_profiles, orient="index")
+
+        panel_scores: dict[str, dict[str, float]] = {}
+        if "nir" in enabled:
+            panel_scores["nir"] = nir_scores(pred_df, truth_df, covariate_groups=cov_groups)
+        if "pds" in enabled:
+            panel_scores["pds"] = pds_scores(pred_df, truth_df, covariate_groups=cov_groups)
+        if "knn_jaccard_deltapert" in enabled and len(pred_deltamean) >= 2:
+            k = int(enabled["knn_jaccard_deltapert"].get("k", 20))
+            pred_dm = pd.DataFrame.from_dict(pred_deltamean, orient="index")
+            truth_dm = pd.DataFrame.from_dict(truth_deltamean, orient="index")
+            panel_scores["knn_jaccard_deltapert"] = knn_jaccard_deltapert(pred_dm, truth_dm, k=k)
+
+        for metric_name, scores in panel_scores.items():
+            info = _metric_info(metric_name)
+            for task in tasks:
+                if method not in task.predicted:
+                    continue
+                tid = task.task_id
+                if tid not in scores:
+                    continue
+                rows.append(
+                    {
+                        "method": method,
+                        "task_id": tid,
+                        "metric": metric_name,
+                        "display_name": info["display_name"],
+                        "metric_group": info["group"],
+                        "value": float(scores[tid]),
+                        "higher_is_better": info["higher_is_better"],
+                        "n_observed": _n_units(task.observed),
+                        "n_predicted": _n_units(task.predicted[method]),
+                        "n_reference": _n_units(task.reference),
+                        **_task_metadata_row(task),
+                    }
+                )
 
 
 def _aggregate(values: pd.Series, aggregate: str) -> float:
@@ -486,6 +831,10 @@ class CounterfactualBenchmarker:
             )
 
         enabled_metrics = _iter_enabled_metrics(self.counterfactual_metrics)
+        per_task_enabled = [(n, k) for n, k in enabled_metrics if n not in PANEL_METRICS]
+        panel_enabled = {
+            n: k for n, k in enabled_metrics if n in PANEL_METRICS
+        }
         rows: list[dict[str, Any]] = []
 
         print_status("[bold cyan]Running counterfactual benchmark metrics…[/]", disable=not self._progress_bar)
@@ -497,7 +846,9 @@ class CounterfactualBenchmarker:
         ):
             metadata = _task_metadata_row(task)
             for method, predicted in task.predicted.items():
-                for metric_name, metric_kwargs in enabled_metrics:
+                for metric_name, metric_kwargs in per_task_enabled:
+                    if metric_name not in METRIC_FUNCTIONS:
+                        continue
                     values = _run_metric(
                         metric_name,
                         task.observed,
@@ -523,6 +874,8 @@ class CounterfactualBenchmarker:
                                 **metadata,
                             }
                         )
+
+        _append_panel_metric_rows(self.tasks, panel_enabled, rows)
 
         self._results = pd.DataFrame(rows)
         self._benchmarked = True

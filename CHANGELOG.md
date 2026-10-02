@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning][].
 
 ## Unreleased
 
+### Added
+
+- CellSimBench-style counterfactual metrics (`pearson_deltapert`, `weighted_r2_deltapert`, DEG-weighted WMSE, NIR/PDS/KNN-Jaccard panel pass).
+- `CounterfactualTask.dataset_mean`, `CounterfactualTask.deg`, and `Counterfactual.cellsimbench()` factory.
+- DRF calibration utilities (`dynamic_range_fraction`, `score_relative_to_baselines`, `drf_all_versions`).
+
 ### Changed
 
 - Spatial-domain `cluster_order="ground_truth"` now uses overlap Hungarian matching on the confusion matrix (shared cells), not cluster-size matching.

@@ -1,3 +1,27 @@
+from ._calibration import (
+    drf_all_versions,
+    dynamic_range_fraction,
+    score_relative_to_baselines,
+)
+from ._cellsimbench import (
+    DegProfile,
+    deg_mask_from_pvals,
+    deg_weights_from_scores,
+    interpolated_duplicate,
+    knn_jaccard_deltapert,
+    mae_degs,
+    mse_degs,
+    nir_scores,
+    pds_scores,
+    pearson_deltactrl,
+    pearson_deltapert,
+    r2_deltactrl,
+    r2_deltapert,
+    weighted_r2_deltactrl,
+    weighted_r2_deltapert,
+    wmse,
+    wmae,
+)
 from ._counterfactual import (
     delta_cosine,
     delta_mae,
@@ -49,7 +73,6 @@ from ._spatial_clustering import (
     spatial_cluster_labels_kmeans,
     spatial_cluster_labels_leiden,
 )
-
 __all__ = [
     "isolated_labels",
     "pcr_comparison",
@@ -102,4 +125,24 @@ __all__ = [
     "spatial_cluster_labels_kmeans",
     "spatial_cluster_labels_leiden",
     "spatial_cluster_labels_from_spatial_coords",
+    "DegProfile",
+    "deg_weights_from_scores",
+    "deg_mask_from_pvals",
+    "interpolated_duplicate",
+    "pearson_deltactrl",
+    "pearson_deltapert",
+    "r2_deltactrl",
+    "r2_deltapert",
+    "weighted_r2_deltactrl",
+    "weighted_r2_deltapert",
+    "mse_degs",
+    "mae_degs",
+    "wmse",
+    "wmae",
+    "nir_scores",
+    "pds_scores",
+    "knn_jaccard_deltapert",
+    "dynamic_range_fraction",
+    "score_relative_to_baselines",
+    "drf_all_versions",
 ]
