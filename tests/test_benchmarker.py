@@ -226,6 +226,32 @@ def test_benchmarker_plot_results_table_funkyheatmap():
     plt.close(fig)
 
 
+def test_funkyheatmap_multi_dataset_table():
+    pytest.importorskip("funkyheatmappy")
+    from scdice_metrics.benchmark._plot_tables import plot_funkyheatmap_multi_dataset_table
+
+    metric_type = "Metric Type"
+    base = pd.DataFrame(
+        {
+            "NMI": [0.9, 0.7],
+            "ARI": [0.8, 0.6],
+            "Bio conservation": [0.85, 0.65],
+        },
+        index=["m1", "m2"],
+    )
+    base.loc[metric_type] = ["Bio conservation", "Bio conservation", "Aggregate score"]
+    ds_a = base.copy()
+    ds_b = base.copy()
+    ds_b.loc["m1", "NMI"] = 0.95
+    fig = plot_funkyheatmap_multi_dataset_table(
+        [("Dataset A", ds_a), ("Dataset B", ds_b)],
+        show=False,
+        show_legends=False,
+    )
+    assert isinstance(fig, Figure)
+    plt.close(fig)
+
+
 def test_benchmarker_custom_display_template():
     ad, emb_keys, batch_key, labels_key = dummy_benchmarker_adata()
     ad.obsm["spatial"] = ad.X[:, :2]

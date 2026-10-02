@@ -784,6 +784,17 @@ class Benchmarker:
                     cmap_df[col] = oriented[col]
 
         if style == "funkyheatmap":
+            lower_cols = frozenset(
+                metric_name_cleaner.get(m, m) for m in template.lower_is_better
+            )
+            oriented_frame = None
+            if not min_max_scale and template.lower_is_better:
+                oriented_frame = orient_metrics_higher_is_better(
+                    self._results.drop(columns=[_METRIC_TYPE], errors="ignore"),
+                    template.lower_is_better,
+                )
+                oriented_frame = oriented_frame.rename(index=metric_name_cleaner).transpose()
+                oriented_frame = oriented_frame.reindex(plot_df.index)
             return plot_funkyheatmap_table(
                 plot_df,
                 method_col="Method",
@@ -795,6 +806,9 @@ class Benchmarker:
                 save_dir=save_dir,
                 circle_cmap=circle_cmap,
                 score_cmap=score_cmap,
+                lower_is_better_cols=lower_cols,
+                circle_num_stds=circle_num_stds,
+                oriented_frame=oriented_frame,
             )
 
         column_definitions = [

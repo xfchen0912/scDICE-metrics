@@ -6,6 +6,10 @@ from ._spatial_prepare import (
     prepare_spatial_clusters,
 )
 from ._swap import SwapSpec, make_swap_specs, summarize_swap_specs
+from ._plot_tables import (
+    combine_benchmark_results_for_funkyheatmap,
+    plot_funkyheatmap_multi_dataset_table,
+)
 from ._templates import BenchmarkMode, BenchmarkTemplate, infer_template
 
 __all__ = [
@@ -26,4 +30,6 @@ __all__ = [
     "Counterfactual",
     "CounterfactualBenchmarker",
     "CounterfactualTask",
+    "combine_benchmark_results_for_funkyheatmap",
+    "plot_funkyheatmap_multi_dataset_table",
 ]
