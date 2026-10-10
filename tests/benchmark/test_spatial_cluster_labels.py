@@ -218,3 +218,28 @@ def test_benchmarker_attaches_spatial_neighbors_for_pas():
     emb_ad = bm._emb_adatas[emb_keys[0]]
     assert _SPATIAL_NEIGHBORS in emb_ad.uns
     assert emb_ad.uns[_SPATIAL_NEIGHBORS] is bm._spatial_neighbors
+
+
+def test_benchmarker_default_pas_uses_exact_knn():
+    from scdice_metrics.benchmark._core import _SPATIAL_NEIGHBORS
+
+    ad, emb_keys, batch_key, labels_key = dummy_benchmarker_adata()
+    ad.obsm["spatial"] = ad.X[:, :2]
+    bm = Benchmarker(
+        ad,
+        batch_key,
+        labels_key,
+        emb_keys[:1],
+        bio_conservation_metrics=None,
+        batch_correction_metrics=None,
+        spatial_clustering_metrics=SpatialClustering(pas=True, chaos=False, hom=False, com=False),
+        spatial_clustering_prepare=SpatialClusteringPrepare(log_prepare=False),
+        spatial_obsm_key="spatial",
+        compute_neighbors=False,
+        progress_bar=False,
+    )
+    bm.prepare()
+    assert bm._spatial_clustering_prepare.reuse_spatial_neighbors_for_pas is False
+    assert bm._spatial_neighbors is None
+    emb_ad = bm._emb_adatas[emb_keys[0]]
+    assert _SPATIAL_NEIGHBORS not in emb_ad.uns

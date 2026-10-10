@@ -357,8 +357,23 @@ def apply_cluster_order(
     return new_labels, None
 
 
-def compute_clustering_kmeans(X: np.ndarray, n_clusters: int, seed: int = 42) -> np.ndarray:
-    kmeans = KMeans(n_clusters, seed=seed)
+def compute_clustering_kmeans(
+    X: np.ndarray,
+    n_clusters: int,
+    seed: int = 42,
+    n_init: int = 1,
+) -> np.ndarray:
+    """k-means cluster labels.
+
+    ``n_init`` is the number of independent k-means++ initialisations; the run with
+    the lowest inertia wins (same semantics as ``sklearn.cluster.KMeans``). The
+    historical default of 1 keeps the old behaviour for callers that do not opt in,
+    but single-init k-means is unstable on flat embeddings (spatial-domain HOM/COM
+    can move by 0.01-0.15 depending on the init, see
+    ``docs/experiments/modules/01_graph_encoder_and_receptive_field.md`` 01-10);
+    spatial-domain scoring should pass ``n_init >= 10``.
+    """
+    kmeans = KMeans(n_clusters, n_init=int(n_init), seed=seed)
     kmeans.fit(X)
     return np.asarray(kmeans.labels_)
 
@@ -501,8 +516,13 @@ def cluster_labels_leiden(
     return compute_clustering_leiden(conn_graph, resolution, seed=seed)
 
 
-def cluster_labels_kmeans(X: np.ndarray, n_clusters: int, seed: int = 42) -> np.ndarray:
-    return compute_clustering_kmeans(X, n_clusters, seed=seed)
+def cluster_labels_kmeans(
+    X: np.ndarray,
+    n_clusters: int,
+    seed: int = 42,
+    n_init: int = 1,
+) -> np.ndarray:
+    return compute_clustering_kmeans(X, n_clusters, seed=seed, n_init=n_init)
 
 
 def neighbors_from_spatial(

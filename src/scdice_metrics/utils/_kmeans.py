@@ -107,12 +107,17 @@ class KMeans:
         max_iter: int = 300,
         tol: float = 1e-4,
         seed: IntOrKey = 0,
+        keep_all: bool = False,
     ):
         self.n_clusters = n_clusters
         self.n_init = n_init
         self.max_iter = max_iter
         self.tol_scale = tol
         self.seed: jax.Array = validate_seed(seed)
+        #: When True, ``fit`` also stores every init's centroids/inertia (and the
+        #: labels they induce) so callers can report the init-to-init spread instead
+        #: of a single best-inertia point estimate.
+        self.keep_all = bool(keep_all)
 
         if init not in ["k-means++", "random"]:
             raise ValueError("Invalid init method, must be one of ['k-means++' or 'random'].")
@@ -142,6 +147,15 @@ class KMeans:
         self.inertia_ = get_ndarray(all_inertias[i])
         _, labels = _get_dist_labels(X, self.cluster_centroids_)
         self.labels_ = get_ndarray(labels)
+        if self.keep_all:
+            centroids_np = np.asarray(get_ndarray(all_centroids))
+            self.inertias_ = np.asarray(get_ndarray(all_inertias))
+            self.labels_per_init_ = np.stack(
+                [
+                    np.asarray(get_ndarray(_get_dist_labels(X, jnp.asarray(centroid))[1]))
+                    for centroid in centroids_np
+                ]
+            )
 
     @partial(jax.jit, static_argnums=(0,))
     def _kmeans_full_run(self, X: jnp.ndarray, key: jnp.ndarray) -> jnp.ndarray:

@@ -44,7 +44,11 @@ def pas_from_neighbors(
     spatial_neighbors: NeighborsResults,
     k: int = 10,
 ) -> float:
-    """Compute PAS using a precomputed spatial kNN graph (equivalent to SDMBench PAS)."""
+    """Compute PAS on a precomputed spatial kNN graph.
+
+    This is an optional faster path. SDMBench ``compute_PAS`` uses exact 10-NN on
+    raw coordinates; prefer :func:`pas` with ``reuse_spatial_neighbors=False``.
+    """
     labels_arr = np.asarray(labels).ravel()
     n_cells = labels_arr.shape[0]
     if n_cells <= 1:
@@ -66,14 +70,39 @@ def pas_from_neighbors(
     return abnormal_count / float(n_cells)
 
 
-def _pas_cdist(labels: np.ndarray, spatial_arr: np.ndarray, k: int) -> float:
-    n_cells = spatial_arr.shape[0]
-    k_eff = min(k, n_cells - 1)
-    dmat = cdist(spatial_arr, spatial_arr, metric="euclidean")
-    np.fill_diagonal(dmat, np.inf)
-    nn_idx = np.argpartition(dmat, kth=k_eff - 1, axis=1)[:, :k_eff]
+def _pas_cdist(labels: np.ndarray, spatial_arr: np.ndarray, k: int, chunk_size: int = 100_000) -> float:
+    """Exact kNN PAS (SDMBench ``_compute_PAS``: argsort ``k``-NN, ``sum != > k/2``).
+
+    SDMBench hardcodes ``k=10`` and does ``np.argsort(dist)[:k]`` even when
+    ``n_cells <= k``. The window then includes self (diagonal is ``inf`` and
+    sorts last); the abnormality threshold stays ``k/2``, not ``k_eff/2``.
+
+    The exhaustive ``cdist`` matrix is O(n^2) memory (11 x 10^9 cells at 860k spots,
+    i.e. ~6 TB), so the exact k-NN is taken with a ``cKDTree`` in chunks instead —
+    same neighbour set (self excluded, ties broken the same arbitrary way) for
+    ``n_cells > k``. The dense definition is kept for the ``n_cells <= k`` corner
+    where SDMBench's window would otherwise include self.
+    """
+    n_cells = int(spatial_arr.shape[0])
+    if n_cells <= k:
+        # Tiny inputs only: keep SDMBench's window semantics verbatim.
+        dmat = cdist(spatial_arr, spatial_arr, metric="euclidean")
+        np.fill_diagonal(dmat, np.inf)
+        nn_idx = np.argsort(dmat, axis=1)[:, :k]
+    else:
+        tree = cKDTree(spatial_arr)
+        nn_idx = np.empty((n_cells, k), dtype=np.int64)
+        chunk = max(1, int(chunk_size))
+        for start in range(0, n_cells, chunk):
+            stop = min(start + chunk, n_cells)
+            _, idx = tree.query(spatial_arr[start:stop], k=k + 1, workers=-1)
+            idx = np.atleast_2d(np.asarray(idx))
+            rows = np.arange(start, stop)[:, None]
+            # Drop the self column even when duplicated coordinates make it non-leading.
+            order = np.argsort(idx == rows, axis=1, kind="stable")
+            nn_idx[start:stop] = np.take_along_axis(idx, order, axis=1)[:, :k]
     mismatch = labels[nn_idx] != labels[:, None]
-    abnormal = mismatch.sum(axis=1) > (k_eff / 2.0)
+    abnormal = mismatch.sum(axis=1) > (k / 2.0)
     return float(np.mean(abnormal))
 
 
@@ -81,15 +110,18 @@ def pas(
     labels: np.ndarray,
     spatial: np.ndarray,
     k: int = 10,
-    standardize: bool = True,
+    standardize: bool = False,
     spatial_neighbors: NeighborsResults | None = None,
-    reuse_spatial_neighbors: bool = True,
+    reuse_spatial_neighbors: bool = False,
 ) -> float:
     """Compute PAS (Percentage of Abnormal Spots) for spatial clustering.
 
+    Matches SDMBench ``compute_PAS``: exact ``k``-NN on raw coordinates
+    (no z-score), a spot is abnormal if more than half of its neighbors have a
+    different label.
+
     When ``spatial_neighbors`` is provided and ``reuse_spatial_neighbors`` is True,
-    PAS is evaluated on the precomputed kNN graph (faster, same definition as
-    all-pairs distances for exact kNN).
+    PAS is evaluated on that (possibly approximate) kNN graph instead.
 
     Parameters
     ----------
@@ -100,8 +132,9 @@ def pas(
     k
         Number of nearest spatial neighbors used for abnormality decision.
     standardize
-        Whether to z-score spatial coordinates before computing distances
-        (only used when falling back to coordinate-based computation).
+        Whether to z-score spatial coordinates before computing distances.
+        SDMBench uses raw coordinates (``False``). Only used when not reusing
+        a neighbor graph.
     spatial_neighbors
         Optional precomputed spatial :class:`~scdice_metrics.nearest_neighbors.NeighborsResults`.
     reuse_spatial_neighbors
@@ -159,6 +192,10 @@ def chaos(
 ) -> float:
     """Compute CHAOS score for spatial clustering continuity.
 
+    Matches SDMBench ``compute_CHAOS``: z-score coordinates with
+    ``StandardScaler`` (population std, ddof=0), skip clusters with ``<= 2``
+    cells, then mean within-cluster 1-NN distance.
+
     Parameters
     ----------
     labels
@@ -167,6 +204,7 @@ def chaos(
         Spatial coordinates of shape ``(n_cells, n_dims)``.
     standardize
         Whether to z-score spatial coordinates before computing distances.
+        SDMBench always standardizes (``True``).
     use_knn
         If True (default), use per-cluster ``cKDTree`` 1-NN instead of dense ``cdist``.
 
@@ -187,10 +225,15 @@ def spatial_cluster_labels_kmeans(
     X: np.ndarray,
     n_clusters: int,
     seed: int = 42,
+    n_init: int = 1,
 ) -> np.ndarray:
-    """Assign spatial-domain clusters with k-means on an embedding."""
+    """Assign spatial-domain clusters with k-means on an embedding.
+
+    Prefer ``n_init >= 10``: single-init k-means on a flat embedding is unstable and
+    the resulting HOM/COM move by far more than the run-to-run noise floor.
+    """
     X = check_array(X, accept_sparse=False, ensure_2d=True)
-    return cluster_labels_kmeans(X, n_clusters, seed=seed)
+    return cluster_labels_kmeans(X, n_clusters, seed=seed, n_init=n_init)
 
 
 def spatial_cluster_labels_leiden(

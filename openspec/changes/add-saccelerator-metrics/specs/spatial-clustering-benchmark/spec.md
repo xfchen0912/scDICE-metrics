@@ -14,6 +14,11 @@ The package SHALL provide optional spatial-domain supervised metrics aligned wit
 - **WHEN** `domain_specific_f1` is enabled and ground-truth spatial labels exist
 - **THEN** the benchmarker records per-domain F1 keys and a documented macro summary for templates
 
+#### Scenario: Unmatched ground-truth domains are NA
+
+- **WHEN** the number of predicted clusters is smaller than the number of ground-truth domains
+- **THEN** every ground-truth domain still appears in `domain_specific_f1`, unmatched domains have F1 `NaN`, and `macro` is `NaN`
+
 ### Requirement: SACCELERATOR metric factory
 
 The package SHALL provide `SpatialClustering.saccelerator()` enabling a documented subset (HOM, COM, CHAOS, PAS, and selected supervised metrics).
@@ -36,7 +41,7 @@ Supervised metrics that require label matching SHALL use a single documented mat
 
 The package MAY expose consensus metrics (cross-method ARI, smoothness entropy) on wide label tables without integrating them into the default single-AnnData benchmark loop.
 
-#### Scenario: Consensus API does not require AnnData benchmark
+#### Scenario: Smoothness entropy uses nats
 
-- **WHEN** a user passes a wide label DataFrame and spatial coordinates
-- **THEN** consensus functions return tabular results without invoking `Benchmarker.benchmark()`
+- **WHEN** `smoothness_entropy` is computed on a wide label table and coordinates
+- **THEN** neighborhood entropy uses natural log (SACCELERATOR `calc_entropy`) and k-NN excludes self

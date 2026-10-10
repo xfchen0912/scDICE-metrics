@@ -78,6 +78,8 @@ class SpatialClusteringPrepare:
         ``max(spatial_n_neighbors, pas_k + 1)`` when ``None``.
     reuse_spatial_neighbors_for_pas
         Passed to :func:`~scdice_metrics.metrics.pas` during benchmarking.
+        Default ``False`` matches SDMBench exact kNN PAS. Set True to reuse the
+        (approximate) spatial neighbor graph built for clustering.
     chaos_use_knn
         Passed to :func:`~scdice_metrics.metrics.chaos` during benchmarking.
     """
@@ -94,11 +96,12 @@ class SpatialClusteringPrepare:
     spatial_n_neighbors: int = 15
     embedding_neighbor_k: int = 15
     seed: int = 42
+    n_init: int = 10
     n_jobs: int = 1
     overwrite: bool = False
     build_spatial_neighbors: bool = True
     spatial_neighbors_k: int | None = None
-    reuse_spatial_neighbors_for_pas: bool = True
+    reuse_spatial_neighbors_for_pas: bool = False
     chaos_use_knn: bool = True
 
 
@@ -305,6 +308,7 @@ def compute_spatial_cluster_labels(
             np.asarray(adata.obsm[emb_key]),
             n_clusters=target_k,
             seed=prepare_cfg.seed,
+            n_init=prepare_cfg.n_init,
         )
     else:
         if prepare_cfg.cluster_graph == "spatial":

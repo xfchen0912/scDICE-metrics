@@ -27,6 +27,8 @@ def match_predicted_to_ground_truth(labels: np.ndarray, labels_pred: np.ndarray)
     """Hungarian match predicted clusters to ground-truth domains (maximize overlap).
 
     Returns a copy of ``labels_pred`` with cluster ids replaced by matched GT domain labels.
+    Clusters that receive no assignment keep their original ids (treated as extra
+    classes by :func:`matched_mcc` / :func:`matched_jaccard`, rather than NaN).
     """
     table = _contingency_table(labels, labels_pred)
     if table.size == 0:
@@ -40,6 +42,22 @@ def match_predicted_to_ground_truth(labels: np.ndarray, labels_pred: np.ndarray)
         if r < len(table.index) and c < len(table.columns):
             remap[table.index[r]] = table.columns[c]
     return np.array([remap.get(v, v) for v in pred_values], dtype=object)
+
+
+def _encode_shared_categories(a: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Integer-encode two label arrays in one shared category space.
+
+    Categories follow ``Series.astype("category")`` (sorted unique values for
+    strings in pandas 2.x), matching SACCELERATOR ``MCC.py`` / ``jaccard.py``.
+    Independent ``factorize`` calls would assign codes by first-appearance order
+    and can compare the wrong classes after Hungarian remapping.
+    """
+    s_a = pd.Series(np.asarray(a).ravel(), dtype=object)
+    s_b = pd.Series(np.asarray(b).ravel(), dtype=object)
+    categories = pd.concat([s_a, s_b], ignore_index=True).astype("category").cat.categories
+    codes_a = pd.Categorical(s_a, categories=categories).codes
+    codes_b = pd.Categorical(s_b, categories=categories).codes
+    return codes_a.astype(np.int64, copy=False), codes_b.astype(np.int64, copy=False)
 
 
 def spatial_ari(labels: np.ndarray, labels_pred: np.ndarray, *, match: bool = False) -> float:
@@ -91,12 +109,31 @@ def gt_mixture_entropy(labels: np.ndarray, labels_pred: np.ndarray) -> float:
     return float(metric)
 
 
+def _domain_f1_from_match(tp: float, domain_size: float, cluster_size: float) -> float:
+    """Harmonic mean used by SACCELERATOR ``domain-specific-f1.r``."""
+    if domain_size == 0 or cluster_size == 0:
+        return float("nan")
+    recall = tp / domain_size
+    precision = tp / cluster_size
+    if recall + precision == 0:
+        return 0.0
+    return float(2.0 / (1.0 / recall + 1.0 / precision))
+
+
 def domain_specific_f1(labels: np.ndarray, labels_pred: np.ndarray) -> dict[str, float]:
-    """Per ground-truth domain F1 after Hungarian matching (SACCELERATOR domain-specific-F1)."""
+    """Per ground-truth domain F1 after Hungarian matching (SACCELERATOR domain-specific-F1).
+
+    Every observed ground-truth domain is present in the result. When
+    ``n_gt > n_clust``, unmatched domains have F1 ``NaN`` (SACCELERATOR writes
+    ``NA`` after ``mapping[names(tt), "domain_size"] <- tt``). ``macro`` is the
+    unweighted mean of those per-domain scores, so it is also ``NaN`` if any
+    domain is unmatched.
+    """
     labels_arr, labels_pred_arr = _check_label_pair(labels, labels_pred)
     table = _contingency_table(labels_arr, labels_pred_arr)
     n_gt = table.shape[1]
     n_pred = table.shape[0]
+    gt_names = list(table.columns)
 
     tb = table.copy()
     if n_pred > n_gt:
@@ -106,51 +143,49 @@ def domain_specific_f1(labels: np.ndarray, labels_pred: np.ndarray) -> dict[str,
     cost = tb.to_numpy(dtype=float)
     row_ind, col_ind = linear_sum_assignment(cost, maximize=True)
 
-    gt_names = list(table.columns)
-    pred_names = list(table.index)
-    out: dict[str, float] = {}
-    f1_vals: list[float] = []
-
+    matched: dict[str, float] = {}
     for r, c in zip(row_ind, col_ind, strict=False):
-        if c >= len(gt_names):
+        if c >= n_gt:
             continue
         gt_name = gt_names[c]
-        if str(gt_name).startswith("dummy"):
-            continue
-        tp = cost[r, c]
-        domain_size = float(table.iloc[:, c].sum()) if c < table.shape[1] else 0.0
+        tp = float(cost[r, c])
+        domain_size = float(table.iloc[:, c].sum())
         cluster_size = float(table.iloc[r, :].sum())
-        if domain_size == 0 or cluster_size == 0:
-            continue
-        recall = tp / domain_size
-        precision = tp / cluster_size
-        if recall + precision == 0:
-            f1 = 0.0
-        else:
-            f1 = 2.0 / (1.0 / recall + 1.0 / precision)
-        key = str(gt_name)
-        out[key] = float(f1)
-        f1_vals.append(float(f1))
+        matched[str(gt_name)] = _domain_f1_from_match(tp, domain_size, cluster_size)
 
-    out["macro"] = float(np.mean(f1_vals)) if f1_vals else float("nan")
+    out: dict[str, float] = {}
+    f1_vals: list[float] = []
+    for gt_name in gt_names:
+        key = str(gt_name)
+        f1 = matched.get(key, float("nan"))
+        out[key] = f1
+        f1_vals.append(f1)
+
+    out["macro"] = float(np.mean(np.asarray(f1_vals, dtype=float))) if f1_vals else float("nan")
     return out
 
 
 def matched_mcc(labels: np.ndarray, labels_pred: np.ndarray) -> float:
-    """MCC after Hungarian matching of predicted clusters to GT (SACCELERATOR MCC)."""
+    """MCC after Hungarian matching of predicted clusters to GT (SACCELERATOR MCC).
+
+    Unmatched predicted clusters (when ``n_clust > n_gt``) are kept as extra
+    classes. SACCELERATOR writes NaN for those spots and ``matthews_corrcoef``
+    then errors; this port stays finite instead of claiming that case matches.
+    """
     labels_arr, labels_pred_arr = _check_label_pair(labels, labels_pred)
     matched = match_predicted_to_ground_truth(labels_arr, labels_pred_arr)
-    gt_codes, _ = pd.factorize(labels_arr)
-    pred_codes, _ = pd.factorize(matched)
+    gt_codes, pred_codes = _encode_shared_categories(labels_arr, matched)
     return float(matthews_corrcoef(gt_codes, pred_codes))
 
 
 def matched_jaccard(labels: np.ndarray, labels_pred: np.ndarray) -> float:
-    """Weighted Jaccard after Hungarian matching (SACCELERATOR jaccard)."""
+    """Weighted Jaccard after Hungarian matching (SACCELERATOR jaccard).
+
+    Encoding and unmatched-cluster policy match :func:`matched_mcc`.
+    """
     labels_arr, labels_pred_arr = _check_label_pair(labels, labels_pred)
     matched = match_predicted_to_ground_truth(labels_arr, labels_pred_arr)
-    gt_codes, _ = pd.factorize(labels_arr)
-    pred_codes, _ = pd.factorize(matched)
+    gt_codes, pred_codes = _encode_shared_categories(labels_arr, matched)
     return float(jaccard_score(gt_codes, pred_codes, average="weighted"))
 
 

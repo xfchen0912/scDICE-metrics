@@ -25,6 +25,12 @@ def cross_method_ari(labels_wide: pd.DataFrame) -> pd.DataFrame:
 
 
 def _spot_entropy(labels: np.ndarray) -> float:
+    """Shannon entropy of a label multiset (nats).
+
+    Matches SACCELERATOR ``calc_entropy`` in ``Smoothness_entropy.r`` /
+    ``Cross_method_entropy.r`` (R ``log`` = natural log). Zero-count classes
+    do not contribute.
+    """
     labels = np.asarray(labels)
     _, counts = np.unique(labels, return_counts=True)
     total = counts.sum()
@@ -34,7 +40,7 @@ def _spot_entropy(labels: np.ndarray) -> float:
     for c in counts:
         p = c / total
         if p > 0:
-            ent -= p * math.log2(p)
+            ent -= p * math.log(p)
     return float(ent)
 
 
@@ -44,7 +50,11 @@ def smoothness_entropy(
     *,
     k: int = 6,
 ) -> pd.Series:
-    """Mean spatial kNN label entropy per method column (lower = smoother)."""
+    """Mean spatial kNN label entropy per method column (lower = smoother).
+
+    Matches SACCELERATOR ``Smoothness_entropy.r``: ``k=6`` neighbors excluding
+    self, Shannon entropy in nats (natural log).
+    """
     coords = np.asarray(spatial, dtype=float)
     if coords.shape[0] != len(labels_wide):
         raise ValueError("spatial coordinates and labels_wide must have the same number of rows.")
@@ -62,7 +72,11 @@ def smoothness_entropy(
 
 
 def cross_method_entropy(labels_wide: pd.DataFrame) -> pd.Series:
-    """Per-row entropy of labels across methods (higher = more cross-method disagreement)."""
+    """Per-row entropy of labels across methods (higher = more cross-method disagreement).
+
+    Entropy is in nats, matching SACCELERATOR ``calc_entropy``. This helper does
+    not run the original per-column Hungarian class alignment.
+    """
     rows = []
     for idx, row in labels_wide.iterrows():
         rows.append(_spot_entropy(row.to_numpy()))
