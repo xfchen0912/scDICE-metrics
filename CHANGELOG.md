@@ -12,21 +12,27 @@ and this project adheres to [Semantic Versioning][].
 
 ### Added
 
+- Response / perturbation decomposition helpers (`response_decomposition`, `perturbation_decomposition`, `split_half_perturbation_decomposition`).
 - SACCELERATOR-style spatial metrics (`spatial_ari`, `domain_specific_f1`, `gt_mixture_entropy`, matched MCC/Jaccard, embedding CH/DB/silhouette) and `SpatialClustering.saccelerator()`.
 - Consensus helpers (`cross_method_ari`, `smoothness_entropy`, `summarize_consensus`) for multi-method label tables.
 - CellSimBench-style counterfactual metrics (`pearson_deltapert`, `weighted_r2_deltapert`, DEG-weighted WMSE, NIR/PDS/KNN-Jaccard panel pass).
 - `CounterfactualTask.dataset_mean`, `CounterfactualTask.deg`, and `Counterfactual.cellsimbench()` factory.
 - DRF calibration utilities (`dynamic_range_fraction`, `score_relative_to_baselines`, `drf_all_versions`).
+- Cell-type-specific condition-swap and niche-swap OOD task generation (`make_swap_specs`, `SwapSpec`, `summarize_swap_specs`).
+- Counterfactual response metrics (pseudobulk, Systema Pearson-delta, delta/effect, signed DE recovery, distribution distances).
+- `CounterfactualBenchmarker` with long-format results and swap-aware summaries (`get_swap_summary`).
 
 ### Changed
 
-- Spatial-domain `cluster_order="ground_truth"` now uses overlap Hungarian matching on the confusion matrix (shared cells), not cluster-size matching.
+- `pas` matches SDMBench `compute_PAS` (exact kNN on raw coordinates; `standardize=False`, no approximate graph by default). `chaos` already followed SDMBench `compute_CHAOS` (`StandardScaler`, skip clusters with ≤2 cells).
+- `smoothness_entropy` / `cross_method_entropy` use natural-log Shannon entropy (SACCELERATOR `calc_entropy`), not `log2`.
+- `Counterfactual.cellsimbench()` now enables the CellSimBench calibration table (`mse`/`mae`, DEG Pearson/R², `mae_degs`/`wmae`, `nir`/`pds`) plus `knn_jaccard_deltapert`. GSEA `pathway_recovery_deltapert` remains unimplemented.
 
-### Added
+### Fixed
 
-- Added cell-type-specific condition-swap and niche-swap OOD task generation (`make_swap_specs`, `SwapSpec`, `summarize_swap_specs`).
-- Added counterfactual response metrics (pseudobulk, Systema Pearson-delta, delta/effect, signed DE recovery, distribution distances).
-- Added `CounterfactualBenchmarker` with long-format results and swap-aware summaries (`get_swap_summary`).
+- `matched_mcc` / `matched_jaccard` now encode GT and matched labels in one shared category space (SACCELERATOR MCC/Jaccard). Independent `factorize` calls could flip MCC sign.
+- `domain_specific_f1` keeps unmatched ground-truth domains as ``NaN`` when ``n_gt > n_clust`` (SACCELERATOR ``NA``). ``macro`` averages all domains, so it is ``NaN`` if any domain is unmatched.
+- `drf_all_versions` `drf_ctrl` uses the dataset-mean baseline for `*deltactrl*` metrics (CellSimBench `MEAN_BASELINE_METRICS_FOR_CTRL`), instead of always using control.
 
 ## 0.1.0 (2025-12-17)
 

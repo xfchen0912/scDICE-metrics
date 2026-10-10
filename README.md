@@ -55,17 +55,17 @@ Spatial-domain metrics follow the [SDMBench][ref-sdmbench-repo] protocol ([Yuan 
 **SDMBench core** (via `SpatialClustering` on `Benchmarker`):
 
 - **Accuracy** (needs `spatial_label_key`): `hom`, `com` ([Rosenberg & Hirschberg, 2007][ref-vmeasure])
-- **Continuity** (lower is better): `chaos`, `pas`; `pas_from_neighbors` reuses a precomputed spatial kNN graph
+- **Continuity** (lower is better): `chaos`, `pas` match SDMBench `compute_CHAOS` / `compute_PAS` (PAS: exact 10-NN on raw coordinates; CHAOS: `StandardScaler` then within-cluster 1-NN). `pas_from_neighbors` is an optional faster approximate graph.
 - **Auto-clustering** when predicted labels are missing: `SpatialClusteringPrepare` / `prepare_spatial_clusters()`, plus `spatial_cluster_labels_leiden`, `spatial_cluster_labels_kmeans`, `spatial_cluster_labels_from_spatial_coords`
 
 `SpatialClustering` defaults to `chaos=True` and `pas=True`. Set `hom=True` / `com=True` when ground-truth spatial domains are in `spatial_label_key`.
 
 **SACCELERATOR extensions** (default off; factory `SpatialClustering.saccelerator()`):
 
-- **Supervised**: `spatial_ari`, `spatial_nmi`, `gt_mixture_entropy` (lower is better), `domain_specific_f1` (dict → `domain_specific_f1_<domain>` + `domain_specific_f1_macro`), `matched_mcc`, `matched_jaccard`
+- **Supervised**: `spatial_ari`, `spatial_nmi`, `gt_mixture_entropy` (lower is better), `domain_specific_f1` (dict → `domain_specific_f1_<domain>` + `domain_specific_f1_macro`; unmatched GT domains are `NaN` when `n_gt > n_clust`), `matched_mcc`, `matched_jaccard`
 - **Unsupervised on embedding** (`ad.X` in the benchmark sub-AnnData): `calinski_harabasz`, `davies_bouldin`, `cluster_specific_silhouette` (per-cluster dict + `macro`)
 - **SpatialARI (external)**: `spatial_external_ari` — placeholder returning NaN until an optional backend is wired
-- **Multi-method consensus** (not part of the default `benchmark()` loop): `cross_method_ari`, `smoothness_entropy`, `cross_method_entropy`, `summarize_consensus` in `scdice_metrics.benchmark` (wide label table + coordinates)
+- **Multi-method consensus** (not part of the default `benchmark()` loop): `cross_method_ari`, `smoothness_entropy` (nats, k=6 exclude-self, SACCELERATOR `Smoothness_entropy.r`), `cross_method_entropy`, `summarize_consensus` in `scdice_metrics.benchmark` (wide label table + coordinates)
 
 Use `display_template="saccelerator"` for grouped **Accuracy** / **Continuity** / **Purity** (`gt_mixture_entropy`). Spatial-domain ARI/NMI use `spatial_ari` / `spatial_nmi` against `spatial_label_key`, not bio-conservation `nmi_ari_cluster_labels_*` (those compare clusters to **cell type**).
 
@@ -78,7 +78,8 @@ Use `display_template="saccelerator"` for grouped **Accuracy** / **Continuity** 
 | `optimize_resolution` | `True` | Search Leiden resolution to match `target_n_clusters` |
 | `target_n_clusters` | inferred from `spatial_label_key` | Desired cluster count |
 | `cluster_order` | `"ground_truth"` | Relabel clusters by overlap Hungarian matching to ground truth, by cell count, custom order, or `"none"` |
-| `build_spatial_neighbors` | `True` | Precompute spatial kNN for Leiden-on-spatial and PAS |
+| `build_spatial_neighbors` | `True` | Precompute spatial kNN for Leiden-on-spatial |
+| `reuse_spatial_neighbors_for_pas` | `False` | Reuse that graph for PAS (approximate). Default off = SDMBench exact kNN |
 
 ### Display templates
 
@@ -120,9 +121,10 @@ Aligned with perturbation-model calibration benchmarks (dual baselines, DEG-weig
 - **Task fields**: optional `dataset_mean` (fold-specific mean profile for `*deltapert*`), `deg` (`DegProfile` with GT-half weights and top-100-by-p mask), `metadata["covariate"]` for panel metrics
 - **Baselines as methods**: put `dataset_mean`, `control`, `technical_duplicate`, `interpolated_duplicate` in `CounterfactualTask.predicted` for DRF
 - **Dual delta**: `pearson_deltactrl` / `pearson_deltapert`, `r2_deltactrl` / `r2_deltapert`, `weighted_r2_*`, DEG top-100 variants (`*_degs`) — distinct from Systema `signed_de_recovery` top-k definitions
-- **DEG-weighted expression**: `wmse`, `wmae`, `mse_degs`, `mae_degs`
-- **Panel metrics** (second benchmark pass, per method): `nir`, `pds`, `knn_jaccard_deltapert` (disabled metrics omit rows; no `0.0` placeholders)
-- **Calibration** (post-hoc on long DataFrame): `dynamic_range_fraction`, `score_relative_to_baselines`, `drf_all_versions`
+- **Expression**: full-spectrum `mse` / `mae`, plus DEG-weighted `wmse`, `wmae`, `mse_degs`, `mae_degs`
+- **Panel metrics** (second benchmark pass, per method): `nir`, `pds`, `knn_jaccard_deltapert` (disabled metrics omit rows; no `0.0` placeholders). Set `metadata["covariate"]` so NIR/PDS group like the original engine.
+- **Factory**: `Counterfactual.cellsimbench()` is a **subset** of the original `calculate_all_metrics`: it enables the calibration `METRICS_CONFIG` set plus `knn_jaccard_deltapert`. It does **not** include GSEA `pathway_recovery_deltapert`.
+- **Calibration** (post-hoc on long DataFrame): `dynamic_range_fraction`, `score_relative_to_baselines`, `drf_all_versions`. CellSimBench figures correspond to the `*_ceiling` columns (technical/interpolated **duplicates** as the scored object; method rows are relative to those ceilings). `knn_jaccard_deltapert` is not in the original DRF calibration table.
 
 Systema top-k true-effect genes and signed-DE top-k sets are **evaluation-only** oracle subsets derived from held-out observed-vs-source effects. Do not use them for training or model selection.
 
@@ -216,7 +218,7 @@ pas = sm.pas(pred, adata.obsm["spatial"], k=10)
 # Optional SACCELERATOR-style supervised scores (spatial GT vs predicted domains)
 sm.spatial_ari(adata.obs["domain_truth"], pred)
 sm.gt_mixture_entropy(adata.obs["domain_truth"], pred)  # lower is better
-sm.domain_specific_f1(adata.obs["domain_truth"], pred)  # dict with "macro" and per-domain keys
+sm.domain_specific_f1(adata.obs["domain_truth"], pred)  # per-domain F1 + macro; unmatched domains are NaN
 ```
 
 ### Direct metric API — perturbation response
@@ -430,6 +432,7 @@ drf = drf_all_versions(bm.get_results(long_format=True))
 - Profile metrics (pseudobulk, delta, signed DE, Wasserstein) and distribution metrics (energy distance, MMD) may require **separate benchmark passes** when their feature spaces differ (e.g. log1p/HVG vs PCA).
 - `fixed_values` creates a cell-type × fixed-value Cartesian product when `match_other_factor=True`.
 - `get_swap_summary()` never pools condition-swap with niche-swap tasks, or marginal with matched condition tasks.
+- `drf_all_versions` skips baseline/ceiling methods themselves. To reproduce CellSimBench calibration plots, read `drf_mean_ceiling` / `drf_ctrl_ceiling` / `drf_interpolated_ceiling` rather than the per-method DRF columns.
 
 Direct metric API example:
 

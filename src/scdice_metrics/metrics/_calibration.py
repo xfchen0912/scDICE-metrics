@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from typing import Any, Literal, Mapping
 
 import numpy as np
 import pandas as pd
@@ -30,6 +30,10 @@ METRIC_DIRECTION: dict[str, dict[str, Any]] = {
 }
 
 DELTAPERT_METRIC_PREFIXES = ("pearson_deltapert", "r2_deltapert", "weighted_r2_deltapert", "knn_jaccard_deltapert")
+# CellSimBench ``MEAN_BASELINE_METRICS_FOR_CTRL``: control predictions make
+# deltactrl correlation/R² degenerate, so ``drf_ctrl`` uses dataset-mean instead.
+DELTACTRL_METRIC_PREFIXES = ("pearson_deltactrl", "r2_deltactrl", "weighted_r2_deltactrl")
+NullBaselineVariant = Literal["mean", "ctrl", "interpolated"]
 
 
 def dynamic_range_fraction(
@@ -53,10 +57,16 @@ def dynamic_range_fraction(
     return float(np.clip(drf, lo, hi))
 
 
-def _null_baseline_method_for_metric(metric: str) -> str:
-    if any(metric.startswith(prefix) for prefix in DELTAPERT_METRIC_PREFIXES):
-        return "control"
-    return "dataset_mean"
+def _null_baseline_method_for_metric(
+    metric: str,
+    *,
+    variant: NullBaselineVariant = "mean",
+) -> str:
+    uses_control_for_mean = any(metric.startswith(prefix) for prefix in DELTAPERT_METRIC_PREFIXES)
+    uses_mean_for_ctrl = any(metric.startswith(prefix) for prefix in DELTACTRL_METRIC_PREFIXES)
+    if variant == "ctrl":
+        return "dataset_mean" if uses_mean_for_ctrl else "control"
+    return "control" if uses_control_for_mean else "dataset_mean"
 
 
 def score_relative_to_baselines(
@@ -64,10 +74,16 @@ def score_relative_to_baselines(
     *,
     ceiling_method: str = "technical_duplicate",
     null_baseline_method: str | None = None,
+    null_baseline_variant: NullBaselineVariant = "mean",
     metric_config: Mapping[str, Mapping[str, Any]] | None = None,
     drf_column: str = "drf",
 ) -> pd.DataFrame:
-    """Attach DRF scores by comparing each method to a null baseline and optional ceiling."""
+    """Attach DRF scores by comparing each method to a null baseline and optional ceiling.
+
+    CellSimBench calibration numbers correspond to the ``*_ceiling`` columns:
+    the original engine scores technical/interpolated duplicates, not the
+    method rows. Baseline and ceiling methods are omitted from the output.
+    """
     required = {"method", "task_id", "metric", "value"}
     missing = required - set(long_df.columns)
     if missing:
@@ -82,7 +98,9 @@ def score_relative_to_baselines(
         cfg = config.get(str(metric))
         if cfg is None:
             continue
-        null_method = null_baseline_method or _null_baseline_method_for_metric(str(metric))
+        null_method = null_baseline_method or _null_baseline_method_for_metric(
+            str(metric), variant=null_baseline_variant
+        )
         by_method = group.set_index("method")["value"]
         if null_method not in by_method.index:
             continue
@@ -127,7 +145,13 @@ def drf_all_versions(
     *,
     metric_config: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> pd.DataFrame:
-    """Compute drf_mean, drf_ctrl, drf_interpolated-style columns via ceiling method swaps."""
+    """Compute drf_mean, drf_ctrl, and drf_interpolated columns.
+
+    ``drf_ctrl`` uses the control baseline except for ``*deltactrl*`` metrics,
+    which fall back to ``dataset_mean`` (CellSimBench
+    ``MEAN_BASELINE_METRICS_FOR_CTRL``). CellSimBench figures correspond to the
+    ``*_ceiling`` columns (duplicates as the scored object).
+    """
     frames = [
         score_relative_to_baselines(
             long_df,
@@ -138,7 +162,7 @@ def drf_all_versions(
         score_relative_to_baselines(
             long_df,
             ceiling_method="interpolated_duplicate",
-            null_baseline_method="control",
+            null_baseline_variant="ctrl",
             drf_column="drf_ctrl",
             metric_config=metric_config,
         ),

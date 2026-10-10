@@ -140,6 +140,16 @@ def profile_mae(observed: Any, predicted: Any) -> float:
     return float(np.mean(np.abs(obs - pred)))
 
 
+def mse(observed: Any, predicted: Any, reference: Any = None, **_: Any) -> float:
+    """Full-spectrum profile MSE (CellSimBench ``mse``)."""
+    return profile_mse(observed, predicted)
+
+
+def mae(observed: Any, predicted: Any, reference: Any = None, **_: Any) -> float:
+    """Full-spectrum profile MAE (CellSimBench ``mae``)."""
+    return profile_mae(observed, predicted)
+
+
 def profile_wmse(observed: Any, predicted: Any, weights: np.ndarray) -> float:
     obs = _mean_profile(observed, name="observed")
     pred = _mean_profile(predicted, name="predicted")

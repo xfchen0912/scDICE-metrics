@@ -16,7 +16,7 @@ The counterfactual benchmark SHALL support optional `dataset_mean` and `deg` on 
 
 ### Requirement: CellSimBench metric factory
 
-The package SHALL provide `Counterfactual.cellsimbench()` returning a configuration with the paper metric subset enabled.
+The package SHALL provide `Counterfactual.cellsimbench()` returning a configuration with the CellSimBench calibration `METRICS_CONFIG` metrics enabled (`mse`/`mae` and DEG variants, dual-delta Pearson/R², weighted R², NIR, PDS), plus `knn_jaccard_deltapert`. GSEA `pathway_recovery_deltapert` is not required.
 
 #### Scenario: Default counterfactual unchanged
 

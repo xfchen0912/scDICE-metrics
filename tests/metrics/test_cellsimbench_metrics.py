@@ -2,7 +2,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from scdice_metrics.metrics._calibration import dynamic_range_fraction, score_relative_to_baselines
+from scdice_metrics.metrics._calibration import (
+    _null_baseline_method_for_metric,
+    drf_all_versions,
+    dynamic_range_fraction,
+    score_relative_to_baselines,
+)
 from scdice_metrics.metrics._cellsimbench import (
     DegProfile,
     deg_mask_from_pvals,
@@ -95,3 +100,48 @@ def test_score_relative_to_baselines():
     model_rows = out[out["method"] == "model"]
     assert len(model_rows) == 1
     assert np.isfinite(model_rows.iloc[0]["drf"])
+
+
+def test_null_baseline_deltactrl_uses_mean_for_drf_ctrl():
+    assert _null_baseline_method_for_metric("r2_deltactrl", variant="ctrl") == "dataset_mean"
+    assert _null_baseline_method_for_metric("pearson_deltactrl_degs", variant="ctrl") == "dataset_mean"
+    assert _null_baseline_method_for_metric("weighted_r2_deltactrl", variant="ctrl") == "dataset_mean"
+    assert _null_baseline_method_for_metric("r2_deltapert", variant="ctrl") == "control"
+    assert _null_baseline_method_for_metric("r2_deltapert", variant="mean") == "control"
+    assert _null_baseline_method_for_metric("r2_deltactrl", variant="mean") == "dataset_mean"
+
+
+def test_drf_ctrl_deltactrl_uses_mean_baseline():
+    """CellSimBench MEAN_BASELINE_METRICS_FOR_CTRL: control is NaN on deltactrl."""
+    rows = [
+        {"task_id": "t1", "method": m, "metric": k, "value": v}
+        for k, d in {
+            "r2_deltapert": {
+                "dataset_mean": 0.05,
+                "control": 0.20,
+                "technical_duplicate": 0.72,
+                "interpolated_duplicate": 0.55,
+                "model": 0.61,
+            },
+            "r2_deltactrl": {
+                "dataset_mean": 0.30,
+                "control": np.nan,
+                "technical_duplicate": 0.80,
+                "interpolated_duplicate": 0.62,
+                "model": 0.68,
+            },
+        }.items()
+        for m, v in d.items()
+    ]
+    out = drf_all_versions(pd.DataFrame(rows))
+
+    ctrl_pert = out[(out["metric"] == "r2_deltapert") & (out["method"] == "model")]
+    assert ctrl_pert["null_baseline_method"].dropna().eq("control").all()
+    pert_ceiling = ctrl_pert["drf_ctrl_ceiling"].dropna().iloc[0]
+    assert pert_ceiling == pytest.approx(0.4375, rel=1e-3)
+
+    ctrl_ctrl = out[(out["metric"] == "r2_deltactrl") & (out["method"] == "model")]
+    assert ctrl_ctrl["null_baseline_method"].dropna().eq("dataset_mean").all()
+    deltactrl_ceiling = ctrl_ctrl["drf_ctrl_ceiling"].dropna().iloc[0]
+    assert deltactrl_ceiling == pytest.approx(0.4571, rel=1e-3)
+    assert np.isfinite(ctrl_ctrl["drf_ctrl"].dropna().iloc[0])

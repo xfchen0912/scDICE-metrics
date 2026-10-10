@@ -9,7 +9,29 @@ from scdice_metrics.benchmark._counterfactual import (
 from scdice_metrics.metrics._cellsimbench import DegProfile
 
 
-def _task(*, with_mean: bool = True, with_deg: bool = True) -> CounterfactualTask:
+CELLSIMBENCH_CALIBRATION_METRICS = {
+    "mse",
+    "mse_degs",
+    "wmse",
+    "mae",
+    "mae_degs",
+    "wmae",
+    "pearson_deltactrl",
+    "pearson_deltactrl_degs",
+    "pearson_deltapert",
+    "pearson_deltapert_degs",
+    "r2_deltactrl",
+    "r2_deltactrl_degs",
+    "r2_deltapert",
+    "r2_deltapert_degs",
+    "weighted_r2_deltactrl",
+    "weighted_r2_deltapert",
+    "nir",
+    "pds",
+}
+
+
+def _task(*, with_mean: bool = True, with_deg: bool = True, task_id: str = "covA_pert1") -> CounterfactualTask:
     rng = np.random.default_rng(0)
     n_genes = 30
     ref = rng.random(n_genes)
@@ -23,7 +45,7 @@ def _task(*, with_mean: bool = True, with_deg: bool = True) -> CounterfactualTas
     top_mask[np.argsort(-weights)[:10]] = True
     deg = DegProfile(weights=weights, top_mask=top_mask)
     return CounterfactualTask(
-        task_id="covA_pert1",
+        task_id=task_id,
         observed=obs,
         predicted={"model": pred, "dataset_mean": mean, "control": ref},
         reference=ref,
@@ -40,6 +62,8 @@ def test_default_counterfactual_excludes_cellsimbench_columns():
     metrics = set(bm.get_results()["metric"])
     assert "weighted_r2_deltapert" not in metrics
     assert "pearson_deltapert" not in metrics
+    assert "mse" not in metrics
+    assert "nir" not in metrics
 
 
 def test_cellsimbench_factory_runs_deltapert_metrics():
@@ -52,9 +76,34 @@ def test_cellsimbench_factory_runs_deltapert_metrics():
     bm.benchmark()
     df = bm.get_results()
     assert "weighted_r2_deltapert" in set(df["metric"])
+    assert "mse" in set(df["metric"])
+    assert "mae" in set(df["metric"])
+    assert "mae_degs" in set(df["metric"])
+    assert "wmae" in set(df["metric"])
+    assert "pearson_deltapert_degs" in set(df["metric"])
     model_row = df[(df["method"] == "model") & (df["metric"] == "weighted_r2_deltapert")]
     assert len(model_row) == 1
     assert model_row.iloc[0]["value"] == pytest.approx(1.0, abs=0.05)
+
+
+def test_cellsimbench_factory_covers_metrics_config():
+    cfg = Counterfactual.cellsimbench()
+    enabled = {name for name, value in cfg.__dict__.items() if value}
+    assert CELLSIMBENCH_CALIBRATION_METRICS <= enabled
+    assert "knn_jaccard_deltapert" in enabled
+
+    t1 = _task(task_id="covA_pert1")
+    t2 = _task(task_id="covA_pert2")
+    bm = CounterfactualBenchmarker(
+        tasks=[t1, t2],
+        counterfactual_metrics=cfg,
+        progress_bar=False,
+    )
+    bm.benchmark()
+    metrics = set(bm.get_results()["metric"])
+    assert CELLSIMBENCH_CALIBRATION_METRICS <= metrics
+    assert "knn_jaccard_deltapert" in metrics
+    assert "pathway_recovery_deltapert" not in metrics
 
 
 def test_panel_nir_two_tasks():

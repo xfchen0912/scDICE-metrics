@@ -14,7 +14,9 @@ from scdice_metrics.benchmark._progress import iter_progress, print_status
 from scdice_metrics.metrics._cellsimbench import (
     DegProfile,
     knn_jaccard_deltapert,
+    mae,
     mae_degs,
+    mse,
     mse_degs,
     nir_scores,
     pds_scores,
@@ -78,6 +80,8 @@ REFERENCE_METRICS = {
     "r2_deltapert_degs",
     "weighted_r2_deltactrl",
     "weighted_r2_deltapert",
+    "mse",
+    "mae",
     "mse_degs",
     "mae_degs",
     "wmse",
@@ -283,6 +287,20 @@ COUNTERFACTUAL_METRIC_INFO: dict[str, dict[str, Any]] = {
         "requires_reference": True,
         "supports_gene_indices": False,
     },
+    "mse": {
+        "display_name": "MSE",
+        "group": "CellSimBench expression",
+        "higher_is_better": False,
+        "requires_reference": False,
+        "supports_gene_indices": False,
+    },
+    "mae": {
+        "display_name": "MAE",
+        "group": "CellSimBench expression",
+        "higher_is_better": False,
+        "requires_reference": False,
+        "supports_gene_indices": False,
+    },
     "mse_degs": {
         "display_name": "MSE (DEG top-100)",
         "group": "CellSimBench expression",
@@ -373,6 +391,8 @@ METRIC_FUNCTIONS: dict[str, MetricFn] = {
     "r2_deltapert_degs": r2_deltapert_degs,
     "weighted_r2_deltactrl": weighted_r2_deltactrl,
     "weighted_r2_deltapert": weighted_r2_deltapert,
+    "mse": mse,
+    "mae": mae,
     "mse_degs": mse_degs,
     "mae_degs": mae_degs,
     "wmse": wmse,
@@ -445,6 +465,8 @@ class Counterfactual:
     r2_deltapert_degs: MetricType = False
     weighted_r2_deltactrl: MetricType = False
     weighted_r2_deltapert: MetricType = False
+    mse: MetricType = False
+    mae: MetricType = False
     mse_degs: MetricType = False
     mae_degs: MetricType = False
     wmse: MetricType = False
@@ -455,7 +477,13 @@ class Counterfactual:
 
     @classmethod
     def cellsimbench(cls) -> Counterfactual:
-        """Enable the CellSimBench paper metric subset (swap/OOD tasks still use task fields)."""
+        """Enable the CellSimBench calibration metric set (``METRICS_CONFIG``).
+
+        Covers dual-delta Pearson/R² (all genes and DEG top-100), weighted R²,
+        full-spectrum and DEG MSE/MAE, WMSE/WMAE, NIR, and PDS. Also keeps
+        ``knn_jaccard_deltapert`` (present in the original engine, not in the
+        calibration table). Does not include GSEA ``pathway_recovery_deltapert``.
+        """
         return cls(
             pseudobulk_pearson=False,
             pseudobulk_rmse=False,
@@ -467,13 +495,24 @@ class Counterfactual:
             signed_de_recovery=False,
             energy_distance=False,
             pearson_deltactrl=True,
+            pearson_deltactrl_degs=True,
             pearson_deltapert=True,
+            pearson_deltapert_degs=True,
             r2_deltactrl=True,
+            r2_deltactrl_degs=True,
             r2_deltapert=True,
+            r2_deltapert_degs=True,
             weighted_r2_deltactrl=True,
             weighted_r2_deltapert=True,
+            mse=True,
+            mae=True,
             mse_degs=True,
+            mae_degs=True,
             wmse=True,
+            wmae=True,
+            nir=True,
+            pds=True,
+            knn_jaccard_deltapert={"k": 20},
         )
 
 
