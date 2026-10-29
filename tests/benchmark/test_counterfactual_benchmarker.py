@@ -257,3 +257,55 @@ def test_get_results_requires_benchmark():
     bm = CounterfactualBenchmarker(tasks=[task], progress_bar=False)
     with pytest.raises(RuntimeError, match="benchmark"):
         bm.get_results()
+
+
+def test_explicit_reference_modes_have_distinct_metric_names(swap_adata):
+    spec = make_swap_specs(
+        swap_adata,
+        swap_type="condition",
+        source_value="REF",
+        target_value="CRC",
+        cell_types=["Fibroblast"],
+        match_other_factor=False,
+        min_source_cells=5,
+        min_target_cells=5,
+    )[0]
+    task = _build_task_from_spec(swap_adata, spec, _perfect_predictions(swap_adata, spec))
+    n_genes = task.observed.shape[1]
+    task.cross_context_template = np.zeros(n_genes)
+    task.perturbed_centroid_reference = np.asarray(task.reference.mean(axis=0)).ravel()
+    bm = CounterfactualBenchmarker(
+        tasks=[task],
+        counterfactual_metrics=Counterfactual(
+            pseudobulk_pearson=False,
+            pseudobulk_rmse=False,
+            systema_pearson_delta=False,
+            signed_de_recovery=False,
+            energy_distance=False,
+            knn_jaccard_deltapert=False,
+            cross_context_residual_delta={"top_k": 5},
+            systema_perturbed_centroid_delta={"top_k": 5},
+        ),
+        progress_bar=False,
+    )
+    bm.benchmark()
+    metrics = set(bm.get_results(long_format=True)["metric"])
+    assert "cross_context_residual_delta_all_genes" in metrics
+    assert "systema_perturbed_centroid_delta_all_genes" in metrics
+
+
+def test_task_validates_explicit_reference_vector_lengths(swap_adata):
+    spec = make_swap_specs(
+        swap_adata,
+        swap_type="condition",
+        source_value="REF",
+        target_value="CRC",
+        cell_types=["Fibroblast"],
+        match_other_factor=False,
+        min_source_cells=5,
+        min_target_cells=5,
+    )[0]
+    task = _build_task_from_spec(swap_adata, spec, _perfect_predictions(swap_adata, spec))
+    task.perturbed_centroid_reference = np.zeros(3)
+    with pytest.raises(ValueError, match="perturbed_centroid_reference length"):
+        CounterfactualBenchmarker(tasks=[task], progress_bar=False)

@@ -15,6 +15,7 @@ __email__ = "chenxufeng2022@sinh.ac.cn"
 
 from . import nearest_neighbors, utils
 from .metrics import (
+    cross_context_residual_delta_metrics,
     assign_latent_blocks_by_mi,
     classifier_attribute_gap,
     calinski_harabasz,
@@ -70,6 +71,7 @@ from .metrics import (
     pseudobulk_log1p_reference_delta_metrics,
     pseudobulk_spearman,
     signed_de_recovery,
+    systema_perturbed_centroid_delta_metrics,
     systema_pearson_delta_metrics,
     systema_reference_delta_metrics,
     DegProfile,
@@ -134,6 +136,7 @@ __all__ = [
     "get_perts",
     "score_centroids",
     "delta_cosine",
+    "cross_context_residual_delta_metrics",
     "delta_mae",
     "delta_pearson",
     "delta_profile_metrics",
@@ -149,6 +152,7 @@ __all__ = [
     "pseudobulk_log1p_reference_delta_metrics",
     "pseudobulk_spearman",
     "signed_de_recovery",
+    "systema_perturbed_centroid_delta_metrics",
     "systema_pearson_delta_metrics",
     "systema_reference_delta_metrics",
     "DegProfile",

@@ -6,6 +6,7 @@ from scipy import stats
 import scdice_metrics
 from scdice_metrics.metrics._counterfactual import (
     _mean_profile,
+    cross_context_residual_delta_metrics,
     delta_pearson,
     delta_profile_metrics,
     delta_rmse,
@@ -18,10 +19,12 @@ from scdice_metrics.metrics._counterfactual import (
     pseudobulk_pearson,
     pseudobulk_rmse,
     signed_de_recovery,
+    systema_perturbed_centroid_delta_metrics,
     systema_pearson_delta_metrics,
     systema_reference_delta_metrics,
 )
 from scdice_metrics.metrics._perturbation import pearson_delta_reference_metrics
+from scdice_metrics.metrics import DegProfile
 
 scdice_metrics.settings.jax_fix_no_kernel_image()
 
@@ -390,6 +393,71 @@ def test_systema_reference_delta_reports_specific_gene_selection():
     assert np.isclose(alias, systema)
 
 
+def test_explicit_reference_metrics_do_not_fall_back_when_reference_is_missing():
+    rng = np.random.default_rng(44)
+    observed, predicted, reference = _make_swap_data(rng, n_genes=12)
+
+    for out in (
+        cross_context_residual_delta_metrics(
+            observed, predicted, reference, cross_context_template=None, top_k=5
+        ),
+        systema_perturbed_centroid_delta_metrics(
+            observed,
+            predicted,
+            reference,
+            perturbed_centroid_reference=None,
+            top_k=5,
+        ),
+    ):
+        assert set(out) == {"all_genes", "top5_true_effect", "top5_specific_effect"}
+        assert all(np.isnan(value) for value in out.values())
+
+
+def test_systema_perturbed_centroid_delta_uses_absolute_reference_profile():
+    rng = np.random.default_rng(45)
+    n_genes = 30
+    control = rng.normal(size=n_genes)
+    perturbed_reference = control + rng.normal(scale=2.0, size=n_genes)
+    specific_true = rng.normal(scale=0.4, size=n_genes)
+    specific_pred = specific_true + rng.normal(scale=0.1, size=n_genes)
+    observed = (perturbed_reference + specific_true)[None, :]
+    predicted = (perturbed_reference + specific_pred)[None, :]
+    reference = control[None, :]
+
+    strict = systema_perturbed_centroid_delta_metrics(
+        observed,
+        predicted,
+        reference,
+        perturbed_centroid_reference=perturbed_reference,
+        top_k=10,
+    )
+    legacy_equivalent = systema_reference_delta_metrics(
+        observed,
+        predicted,
+        reference,
+        template=perturbed_reference - control,
+        top_k=10,
+    )
+    assert strict == legacy_equivalent
+
+
+def test_cross_context_residual_matches_legacy_template_when_available():
+    rng = np.random.default_rng(46)
+    observed, predicted, reference = _make_swap_data(rng, n_genes=20)
+    template = rng.normal(size=20)
+    explicit = cross_context_residual_delta_metrics(
+        observed,
+        predicted,
+        reference,
+        cross_context_template=template,
+        top_k=7,
+    )
+    legacy = systema_reference_delta_metrics(
+        observed, predicted, reference, template=template, top_k=7
+    )
+    assert explicit == legacy
+
+
 def test_constant_vectors_return_nan():
     genes = 10
     const = np.ones((5, genes))
@@ -432,6 +500,36 @@ def test_signed_de_recovery_requires_top_k():
     observed, predicted, reference = _make_swap_data(rng, n_cells=5, n_genes=10)
     with pytest.raises(ValueError, match="top_k"):
         signed_de_recovery(observed, predicted, reference, top_k=0)
+
+
+def test_signed_de_recovery_uses_independent_deg_profile_without_redundant_outputs():
+    reference = np.zeros((4, 6))
+    observed = np.tile(np.asarray([3.0, -2.0, 1.0, 0.5, 0.0, 0.0]), (4, 1))
+    predicted = observed.copy()
+    deg = DegProfile(
+        weights=np.asarray([1.0, 0.8, 0.6, 0.4, 0.0, 0.0]),
+        top_mask=np.asarray([True, True, True, True, False, False]),
+        significant_mask=np.asarray([True, True, False, False, False, False]),
+        directions=np.asarray([1.0, -1.0, 1.0, 1.0, 0.0, 0.0]),
+        effects=np.asarray([4.0, -3.0, 2.0, 1.0, 0.0, 0.0]),
+        source="gt_half",
+    )
+
+    out = signed_de_recovery(
+        observed,
+        predicted,
+        reference,
+        top_k=3,
+        deg=deg,
+    )
+
+    assert set(out) == {
+        "topk_overlap",
+        "direction_accuracy",
+        "lfc_spearman",
+        "significant_deg_recall",
+    }
+    assert all(value == pytest.approx(1.0) for value in out.values())
 
 
 def test_delta_profile_metrics_keys():

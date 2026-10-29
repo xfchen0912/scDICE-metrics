@@ -25,6 +25,7 @@ from ._cellsimbench import (
     wmae,
 )
 from ._counterfactual import (
+    cross_context_residual_delta_metrics,
     delta_cosine,
     delta_mae,
     delta_pearson,
@@ -41,6 +42,7 @@ from ._counterfactual import (
     pseudobulk_log1p_reference_delta_metrics,
     pseudobulk_spearman,
     signed_de_recovery,
+    systema_perturbed_centroid_delta_metrics,
     systema_pearson_delta_metrics,
     systema_reference_delta_metrics,
 )
@@ -120,6 +122,7 @@ __all__ = [
     "get_perts",
     "score_centroids",
     "delta_cosine",
+    "cross_context_residual_delta_metrics",
     "delta_mae",
     "delta_pearson",
     "delta_profile_metrics",
@@ -135,6 +138,7 @@ __all__ = [
     "pseudobulk_log1p_reference_delta_metrics",
     "pseudobulk_spearman",
     "signed_de_recovery",
+    "systema_perturbed_centroid_delta_metrics",
     "systema_pearson_delta_metrics",
     "systema_reference_delta_metrics",
     "chaos",

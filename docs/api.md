@@ -114,6 +114,8 @@ sm.ilisi_knn(...)
     pseudobulk_rmse
     pseudobulk_mae
     systema_pearson_delta_metrics
+    cross_context_residual_delta_metrics
+    systema_perturbed_centroid_delta_metrics
     delta_pearson
     delta_spearman
     delta_cosine

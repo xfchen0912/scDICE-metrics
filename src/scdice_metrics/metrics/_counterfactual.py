@@ -336,6 +336,79 @@ def systema_reference_delta_metrics(
     return out
 
 
+def _unavailable_reference_delta_metrics(*, top_k: int) -> dict[str, float]:
+    """Return the stable output schema for an unavailable shifted reference."""
+    if top_k < 1:
+        raise ValueError("top_k must be >= 1.")
+    return {
+        "all_genes": float("nan"),
+        f"top{top_k}_true_effect": float("nan"),
+        f"top{top_k}_specific_effect": float("nan"),
+    }
+
+
+def cross_context_residual_delta_metrics(
+    observed: Any,
+    predicted: Any,
+    reference: Any,
+    *,
+    cross_context_template: Any | None = None,
+    top_k: int = 20,
+) -> dict[str, float]:
+    """Pearson-delta after removing a response learned from other contexts.
+
+    This is the explicit name for the historical cross-context template estimand.  It is
+    intentionally distinct from Systema's perturbed-centroid reference.  When no independent
+    context is available, the metric is unavailable and returns NaNs rather than silently
+    falling back to the control-referenced delta.
+    """
+    if cross_context_template is None:
+        return _unavailable_reference_delta_metrics(top_k=top_k)
+    return systema_reference_delta_metrics(
+        observed,
+        predicted,
+        reference,
+        template=cross_context_template,
+        top_k=top_k,
+    )
+
+
+def systema_perturbed_centroid_delta_metrics(
+    observed: Any,
+    predicted: Any,
+    reference: Any,
+    *,
+    perturbed_centroid_reference: Any | None = None,
+    top_k: int = 20,
+) -> dict[str, float]:
+    """Systema Pearson-delta using the absolute training-perturbation centroid.
+
+    ``perturbed_centroid_reference`` is an absolute per-gene profile, constructed as the
+    equal-weighted mean of eligible *training perturbation centroids*.  A missing reference
+    makes the metric unavailable; it never falls back to the source-control centroid.
+    """
+    if perturbed_centroid_reference is None:
+        return _unavailable_reference_delta_metrics(top_k=top_k)
+
+    control_reference = _mean_profile(reference, name="reference")
+    perturbed_reference = np.asarray(perturbed_centroid_reference, dtype=float).ravel()
+    if perturbed_reference.size != control_reference.size:
+        raise ValueError(
+            "perturbed_centroid_reference has "
+            f"{perturbed_reference.size} genes but the profiles have {control_reference.size}."
+        )
+    if not np.all(np.isfinite(perturbed_reference)):
+        raise ValueError("perturbed_centroid_reference contains non-finite values.")
+
+    return systema_reference_delta_metrics(
+        observed,
+        predicted,
+        reference,
+        template=perturbed_reference - control_reference,
+        top_k=top_k,
+    )
+
+
 def _pseudobulk_log1p_profile(X: Any, *, name: str) -> np.ndarray:
     """Aggregate a cell matrix to a profile the *same* way on every side.
 
