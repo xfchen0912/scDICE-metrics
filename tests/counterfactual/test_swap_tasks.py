@@ -36,6 +36,11 @@ def test_condition_swap_without_matching(swap_adata):
     context_obs = obs.loc[spec.context_mask]
     assert (context_obs["condition"] == "CRC").all()
     assert (context_obs["cell_type"] != "Fibroblast").all()
+    assert spec.metadata["split_scope"] == "block_out"
+    assert spec.metadata["target_level_seen_in_train"] is True
+    assert spec.metadata["n_target_level_train"] == int(spec.context_mask.sum())
+    # The legacy field remains available but is no longer the canonical split label.
+    assert spec.metadata["split_type"] == "target_out"
 
 
 def test_condition_swap_with_niche_matching(swap_adata):
@@ -272,3 +277,22 @@ def test_summarize_swap_specs(swap_adata):
     assert summary.shape[0] == 1
     assert summary.loc[0, "task_id"] == specs[0].task_id
     assert summary.loc[0, "n_target"] == specs[0].metadata["n_target"]
+    assert summary.loc[0, "split_scope"] == "block_out"
+    assert bool(summary.loc[0, "target_level_seen_in_train"])
+
+
+def test_target_visibility_is_derived_from_realized_training_mask(swap_adata):
+    single_context = swap_adata[swap_adata.obs["cell_type"] == "Fibroblast"].copy()
+    specs = make_swap_specs(
+        single_context,
+        swap_type="condition",
+        source_value="REF",
+        target_value="CRC",
+        cell_types=["Fibroblast"],
+        match_other_factor=False,
+        min_source_cells=1,
+        min_target_cells=1,
+    )
+    assert specs[0].metadata["split_scope"] == "block_out"
+    assert specs[0].metadata["target_level_seen_in_train"] is False
+    assert specs[0].metadata["n_target_level_train"] == 0

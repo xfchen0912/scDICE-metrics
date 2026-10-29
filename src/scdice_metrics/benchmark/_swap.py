@@ -140,6 +140,7 @@ def _build_metadata(
     source_mask: np.ndarray,
     target_mask: np.ndarray,
     context_mask: np.ndarray,
+    n_target_level_train: int,
 ) -> dict[str, Any]:
     return {
         "swap_type": swap_type,
@@ -153,6 +154,11 @@ def _build_metadata(
         "n_source": int(source_mask.sum()),
         "n_target": int(target_mask.sum()),
         "n_context": int(context_mask.sum()),
+        # Canonical semantics. The legacy fields below are retained for readers that still
+        # expect them, but ``target_out`` must not be interpreted as globally unseen-target.
+        "split_scope": "block_out",
+        "target_level_seen_in_train": bool(n_target_level_train > 0),
+        "n_target_level_train": int(n_target_level_train),
         "split_type": "target_out",
         "context_mode": "target_context_available",
     }
@@ -233,6 +239,14 @@ def make_swap_specs(
             continue
 
         fixed_key = other_key if match_other_factor else None
+        target_level_train_mask = train_mask & (obs[swap_key] == target_value).to_numpy(
+            dtype=bool, copy=False
+        )
+        if match_other_factor:
+            target_level_train_mask &= (obs[other_key] == fixed_value).to_numpy(
+                dtype=bool, copy=False
+            )
+        n_target_level_train = int(target_level_train_mask.sum())
         task_id = _format_task_id(
             swap_type,
             str(cell_type),
@@ -265,6 +279,7 @@ def make_swap_specs(
             source_mask=source_mask,
             target_mask=target_mask,
             context_mask=context_mask,
+            n_target_level_train=n_target_level_train,
         )
 
         specs.append(
@@ -305,6 +320,13 @@ def summarize_swap_specs(specs: Sequence[SwapSpec]) -> pd.DataFrame:
                 "n_source": spec.metadata.get("n_source", int(spec.source_mask.sum())),
                 "n_target": spec.metadata.get("n_target", int(spec.target_mask.sum())),
                 "n_context": spec.metadata.get("n_context", int(spec.context_mask.sum())),
+                "split_scope": spec.metadata.get("split_scope", "block_out"),
+                "target_level_seen_in_train": bool(
+                    spec.metadata.get("target_level_seen_in_train", False)
+                ),
+                "n_target_level_train": int(
+                    spec.metadata.get("n_target_level_train", 0)
+                ),
             }
         )
     return pd.DataFrame(rows)
