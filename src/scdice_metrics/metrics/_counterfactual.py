@@ -650,11 +650,80 @@ def signed_de_recovery(
     *,
     top_k: int = 50,
     min_abs_effect: float = 0.0,
+    deg: Any | None = None,
+    **_: Any,
 ) -> dict[str, float]:
     if top_k < 1:
         raise ValueError("top_k must be >= 1.")
 
     delta_true, delta_pred, _ = _delta_profiles(observed, predicted, reference)
+    if deg is not None:
+        top_mask = np.asarray(deg.top_mask, dtype=bool).ravel()
+        if top_mask.shape != delta_true.shape:
+            raise ValueError("deg.top_mask must match the evaluated gene dimension.")
+        selector_effects = (
+            np.asarray(deg.effects, dtype=float).ravel()
+            if getattr(deg, "effects", None) is not None
+            else np.asarray(deg.weights, dtype=float).ravel()
+        )
+        if selector_effects.shape != delta_true.shape:
+            raise ValueError("deg effects/weights must match the evaluated gene dimension.")
+
+        selected = np.flatnonzero(top_mask)
+        if selected.size == 0:
+            nan = float(np.nan)
+            return {
+                "topk_overlap": nan,
+                "direction_accuracy": nan,
+                "lfc_spearman": nan,
+                "significant_deg_recall": nan,
+            }
+        k_eff = min(top_k, selected.size, delta_pred.size)
+        true_top = selected[np.argsort(-np.abs(selector_effects[selected]))[:k_eff]]
+        pred_top = np.argsort(-np.abs(delta_pred))[:k_eff]
+        pred_top_set = set(pred_top.tolist())
+        overlap = _safe_div(
+            len(set(true_top.tolist()) & pred_top_set),
+            len(true_top),
+        )
+
+        nonzero = delta_true[true_top] != 0.0
+        direction_accuracy = (
+            float(
+                np.mean(
+                    np.sign(delta_pred[true_top[nonzero]])
+                    == np.sign(delta_true[true_top[nonzero]])
+                )
+            )
+            if np.any(nonzero)
+            else float(np.nan)
+        )
+        lfc_spearman = _safe_spearman(delta_true[true_top], delta_pred[true_top])
+
+        significant_mask = getattr(deg, "significant_mask", None)
+        if significant_mask is None:
+            significant = selected
+        else:
+            significant_arr = np.asarray(significant_mask, dtype=bool).ravel()
+            if significant_arr.shape != delta_true.shape:
+                raise ValueError(
+                    "deg.significant_mask must match the evaluated gene dimension."
+                )
+            significant = np.flatnonzero(significant_arr)
+        recovered_significant = sum(
+            gene in pred_top_set
+            and delta_true[gene] != 0.0
+            and np.sign(delta_pred[gene]) == np.sign(delta_true[gene])
+            for gene in significant
+        )
+        significant_recall = _safe_div(recovered_significant, len(significant))
+        return {
+            "topk_overlap": overlap,
+            "direction_accuracy": direction_accuracy,
+            "lfc_spearman": lfc_spearman,
+            "significant_deg_recall": significant_recall,
+        }
+
     eligible = np.flatnonzero(np.abs(delta_true) >= min_abs_effect)
     if eligible.size == 0:
         nan = float(np.nan)

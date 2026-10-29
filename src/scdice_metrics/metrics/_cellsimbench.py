@@ -28,6 +28,7 @@ class DegProfile:
     source: DegSource = "gt_half"
     significant_mask: np.ndarray | None = None
     directions: np.ndarray | None = None
+    effects: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         w = np.asarray(self.weights, dtype=float).ravel()
@@ -38,6 +39,25 @@ class DegProfile:
             raise ValueError("DegProfile weights must be finite.")
         object.__setattr__(self, "weights", w)
         object.__setattr__(self, "top_mask", m)
+        if self.significant_mask is not None:
+            significant = np.asarray(self.significant_mask, dtype=bool).ravel()
+            if significant.shape != w.shape:
+                raise ValueError("DegProfile significant_mask must match weights length.")
+            object.__setattr__(self, "significant_mask", significant)
+        if self.directions is not None:
+            directions = np.asarray(self.directions, dtype=float).ravel()
+            if directions.shape != w.shape:
+                raise ValueError("DegProfile directions must match weights length.")
+            if not np.all(np.isfinite(directions)):
+                raise ValueError("DegProfile directions must be finite.")
+            object.__setattr__(self, "directions", directions)
+        if self.effects is not None:
+            effects = np.asarray(self.effects, dtype=float).ravel()
+            if effects.shape != w.shape:
+                raise ValueError("DegProfile effects must match weights length.")
+            if not np.all(np.isfinite(effects)):
+                raise ValueError("DegProfile effects must be finite.")
+            object.__setattr__(self, "effects", effects)
 
 
 def deg_weights_from_scores(

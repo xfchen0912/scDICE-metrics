@@ -9,6 +9,7 @@ from scdice_metrics.benchmark._counterfactual import (
 )
 from scdice_metrics.benchmark._swap import make_swap_specs
 from tests.utils.swap_fixtures import make_swap_benchmark_adata
+from scdice_metrics.metrics import DegProfile
 
 
 def _expression_from_mask(adata, mask):
@@ -105,6 +106,42 @@ def test_metadata_propagation_and_unequal_prediction_sizes(swap_adata):
     results = bm.get_results(long_format=True)
     assert (results["dataset"] == "fixture").all()
     assert set(results["n_predicted"]) == {3, target.shape[0]}
+
+
+def test_benchmarker_routes_independent_deg_profile_to_signed_de_metric():
+    observed = np.tile(np.asarray([2.0, -1.0, 0.5, 0.0]), (3, 1))
+    reference = np.zeros_like(observed)
+    task = CounterfactualTask(
+        task_id="independent-de",
+        observed=observed,
+        predicted={"model": observed.copy()},
+        reference=reference,
+        deg=DegProfile(
+            weights=np.asarray([1.0, 0.8, 0.5, 0.0]),
+            top_mask=np.asarray([True, True, True, False]),
+            significant_mask=np.asarray([True, True, False, False]),
+            directions=np.asarray([1.0, -1.0, 1.0, 0.0]),
+            effects=np.asarray([3.0, -2.0, 1.0, 0.0]),
+        ),
+    )
+    metrics = {
+        name: False for name in Counterfactual.__dataclass_fields__
+    }
+    metrics["signed_de_recovery"] = {"top_k": 3}
+    benchmarker = CounterfactualBenchmarker(
+        tasks=[task],
+        counterfactual_metrics=Counterfactual(**metrics),
+        progress_bar=False,
+    )
+    benchmarker.benchmark()
+    names = set(benchmarker.get_results(long_format=True)["metric"])
+
+    assert names == {
+        "signed_de_recovery_topk_overlap",
+        "signed_de_recovery_direction_accuracy",
+        "signed_de_recovery_lfc_spearman",
+        "signed_de_recovery_significant_deg_recall",
+    }
 
 
 def test_wide_summary_respects_partitions(swap_adata):
