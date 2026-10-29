@@ -9,7 +9,12 @@ from ._spatial_prepare import (
 from ._swap import SwapSpec, make_swap_specs, summarize_swap_specs
 from ._plot_tables import (
     combine_benchmark_results_for_funkyheatmap,
+    combine_wide_benchmark_metrics,
     plot_funkyheatmap_multi_dataset_table,
+    plot_multi_dataset_benchmark_table,
+    plot_plottable_multi_dataset_table,
+    render_funkyheatmap_layout,
+    sort_and_select_table_columns,
 )
 from ._consensus import (
     cross_method_ari,

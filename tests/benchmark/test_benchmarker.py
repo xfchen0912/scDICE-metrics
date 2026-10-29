@@ -228,7 +228,10 @@ def test_benchmarker_plot_results_table_funkyheatmap():
 
 def test_funkyheatmap_multi_dataset_table():
     pytest.importorskip("funkyheatmappy")
-    from scdice_metrics.benchmark._plot_tables import plot_funkyheatmap_multi_dataset_table
+    from scdice_metrics.benchmark._plot_tables import (
+        combine_benchmark_results_for_funkyheatmap,
+        plot_funkyheatmap_multi_dataset_table,
+    )
 
     metric_type = "Metric Type"
     base = pd.DataFrame(
@@ -250,6 +253,11 @@ def test_funkyheatmap_multi_dataset_table():
     )
     assert isinstance(fig, Figure)
     plt.close(fig)
+
+    _, _, bar, _, _ = combine_benchmark_results_for_funkyheatmap(
+        [("Dataset A", ds_a), ("Dataset B", ds_b)],
+    )
+    assert any(c.startswith("__agg_") for c in bar.columns)
 
 
 def test_benchmarker_custom_display_template():
